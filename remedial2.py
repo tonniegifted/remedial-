@@ -1,8 +1,10 @@
 from tkinter import*
 from tkinter import ttk
 from tkinter import messagebox
+# from CTkMessagebox import
 from CTkMessagebox import CTkMessagebox
 import mysql.connector
+from customtkinter import CTkToplevel
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from decimal import Decimal
@@ -41,7 +43,7 @@ window_width = 680
 window_height = 600
 # Calculate position to center horizontally and start at the top
 position_x = (screen_width - window_width) // 2
-position_y = 10  # Start at the top
+position_y = 10  # Start at the to
 root.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
 root.resizable(width=False, height=False)
 #color blue
@@ -49,68 +51,533 @@ blue="#4582EC"
 
 
 
-#FUNCTIONS 
-def undo_promotion():
+#FUNCTIONS
+def tr_attendance_func(e=None):
+    global tr_attend_tree, tr_attend_search_entry, tr_attend_disp_label, tr_attend_win
+    tr_attend_win = CTkToplevel(root)
+    tr_attend_win.geometry("800x350+100+100")
+    tr_attend_win.title("Teacher Attendance History")
+    # style
+    # fee collection treeview
+    tr_attend_frame = ctk.CTkFrame(tr_attend_win,fg_color="transparent")
+    tr_attend_tree_scroll = Scrollbar(tr_attend_frame, orient=VERTICAL)
+    tr_attend_tree_scroll.pack(side=RIGHT, fill=Y)
+    tr_attend_frame.pack()
+    tr_attend_tree = ttk.Treeview(tr_attend_frame, yscrollcommand=tr_attend_tree_scroll.set, height=12)
+    tr_attend_tree_scroll.configure(command=tr_attend_tree.yview)
+    tr_attend_win.resizable(width=False,height=False)
+    tr_attend_win.transient(root)
+    tr_attend_win.grab_set()
+    tr_attend_win.title("Monitor Tr. Attendance")
+    tr_attend_tree.after(100, lambda: tr_attend_tree.lift())  # Delay lifting the window
+    tr_attend_tree.after(200, lambda: tr_attend_tree.focus_force())  # Delay forcing
+    # defining columns
+    tr_attend_tree["columns"] = ('s/no', 'name', 'grade', 'subject', 'token', 'session', 'week', 'date')
+    tr_attend_tree.column("#0", width=0, stretch=NO)
+    tr_attend_tree.column("s/no", width=40, anchor="center", minwidth=35)
+    tr_attend_tree.column("name", width=150, minwidth=150, anchor=W)
+    tr_attend_tree.column("grade", width=80, minwidth=75, anchor=CENTER)
+    tr_attend_tree.column("subject", width=60, minwidth=50, anchor=CENTER)
+    tr_attend_tree.column("token", width=70, minwidth=50, anchor=CENTER)
+    tr_attend_tree.column("session", width=100, minwidth=90, anchor=W)
+    tr_attend_tree.column("week", width=150, minwidth=150, anchor=CENTER)
+    tr_attend_tree.column("date", width=150, minwidth=150, anchor=W)
+    # headings
+    tr_attend_tree.heading("#0", text="")
+    tr_attend_tree.heading("s/no", text="#", anchor=CENTER)
+    tr_attend_tree.heading("name", text="NAME", anchor=CENTER)
+    tr_attend_tree.heading("grade", text="GRADE", anchor=CENTER)
+    tr_attend_tree.heading("subject", text="SUBJ", anchor=CENTER)
+    tr_attend_tree.heading("token", text="TOKEN", anchor=CENTER)
+    tr_attend_tree.heading("session", text="SESSION", anchor=CENTER)
+    tr_attend_tree.heading("week", text="WEEK", anchor=CENTER)
+    tr_attend_tree.heading("date", text="DATE", anchor=CENTER)
+    # fee collection frame display
+    tr_attend_tree.pack(fill=BOTH, expand=True, pady=50)
+    # widget camera
+    # search2
+    # tr_attend_search_button=Button(tr_attend_win,text="Search",font="times 11",command=lambda: disp_attendance_history(None))
+    tr_attend_search_button = ctk.CTkButton(tr_attend_win, text="Search", command=disp_attendance_history,width=10)
+    # tr_attend_search_button.place(x=30,y=340)
+    tr_attend_search_button.place(x=190, y=10)
+    tr_attend_search_entry = ctk.CTkEntry(tr_attend_win, width=80,border_color=blue,
+                                          placeholder_text="Tr ID")
+    # tr_attend_search_entry.place(x=90,y=340)
+    tr_attend_search_entry.place(x=100, y=10)
+
+    # button to delete teacher attendance per id
+    # tr_attend_delete_button = Button(tr_attend_win, text="Delete", font="times 11", command=delete_attend_record)
+    # tr_attend_delete_button.place(x=30, y=380)
+    # display what should be searched
+    # display_label2
+    tr_attend_disp_label = ctk.CTkLabel(tr_attend_win, font=("Helvetica",12),text="")
+    tr_attend_disp_label.place(x=250, y=10)
+    # attempt to display all available records
+    cur.execute("""SELECT t.first,t.second, a.grade,a.session,
+            a.record_date,w.selected_week,a.session_amount,a.subject
+            FROM teacher_attendance a JOIN teacher t ON t.teacher_id=a.teacher_id
+            JOIN week_number w ON w.week_number_id=a.week_number_id JOIN term tm
+            ON a.term_id=tm.term_id
+            WHERE a.term_id=(SELECT term_id FROM term WHERE is_active=1)""")
+    items = cur.fetchall()
+    if items:
+        for index, items in enumerate(items, start=1):
+            time = items[4]
+            formatted_time = time.strftime("%d-%m-%Y")
+
+            full_name = f"{items[0]} {items[1]}".title()
+            tr_attend_tree.insert("", END, values=(
+            index, full_name, items[2], items[7], items[6], items[3], items[5], formatted_time))
+
+    else:
+        messagebox.showinfo("Transaction history", "No Teacher Attendance Records")
+        tr_attend_win.destroy()
+
+
+def disp_attendance_history():
+    global tr_attend_tree, session_combo, grade_combo, subject_combo, pay_token_entry, tr_win_disp,tr_attend_search_entry,tr_attend_disp_label
+
     try:
-        resp=messagebox.askyesno("Remedial App","Do you want to undo Learner Move?")
-        if resp:
-            # Step 1: Revert learners from Grade 9 back to Grade 8
-            cur.execute("""
-                UPDATE learner
-                SET grade = 'Eight'
-                WHERE grade = 'Nine'
-            """)
+        # Ensure treeview is cleared before inserting new records
+        teacher_id=int(tr_attend_search_entry.get())
+        tr_attend_tree.delete(*tr_attend_tree.get_children())
+        # Ensure an item is selected
+        # pos = teacher_tree.selection()
+        # if not pos:
+        #     tr_attend_disp_label.configure(text="Please select a teacher from the list")
+        #     tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
+        #     return
+        #
+        # value = teacher_tree.item(pos, "values")
+        # teacher_id = value[1]
 
-            # Step 2: Revert learners from Grade 8 back to Grade 7
-            cur.execute("""
-                UPDATE learner
-                SET grade = 'Seven'
-                WHERE grade = 'Eight'
-            """)
+        # Query to get teacher attendance records
+        cur.execute("""
+            SELECT t.first, t.second, a.grade, a.session, a.record_date, 
+                   w.selected_week, a.session_amount, a.subject
+            FROM teacher_attendance a 
+            JOIN teacher t ON t.teacher_id = a.teacher_id
+            JOIN week_number w ON w.week_number_id = a.week_number_id 
+            JOIN term tm ON a.term_id = tm.term_id
+            WHERE a.teacher_id = %s 
+            AND a.term_id = (SELECT term_id FROM term WHERE is_active = 1)
+        """, (teacher_id,))
 
-            # Commit the rollback
-            my_db.commit()
-            messagebox.showinfo("Undo Promotion", "Learner promotion has been successfully undone.")
-            display_learners()
+        items = cur.fetchall()
+        if items:
+            for index, item in enumerate(items, start=1):
+                formatted_time = item[4].strftime("%d-%m-%Y")
+                full_name = f"{item[0]} {item[1]}".title()
+                tr_attend_tree.insert("", "end", values=(
+                    index, full_name, item[2], item[7], item[6], item[3], item[5], formatted_time
+                ))
+
+            # Fetch the teacher's paid tokens
+            cur.execute("SELECT token_paid FROM teacher_token WHERE teacher_id = %s", (teacher_id,))
+            tr_paid = cur.fetchone()
+            teacher_paid = int(tr_paid[0]) if tr_paid else 0
+
+            # Fetch the total session amount
+            cur.execute("SELECT SUM(session_amount) FROM teacher_attendance WHERE teacher_id = %s", (teacher_id,))
+            tot = cur.fetchone()
+            total = int(tot[0]) if tot and tot[0] else 0
+
+            balance = total - teacher_paid
+
+            # Ensure `tr_win_disp` exists before modifying it
+            if tr_attend_disp_label and tr_attend_disp_label.winfo_exists():
+                tr_attend_disp_label.configure(text=f"Balance = {balance}")
+                tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
+            else:
+                print("Warning: tr_win_disp is closed or does not exist.")
         else:
-            pass
+            tr_attend_disp_label.configure(text=f"Record with Tr.No {tr_attend_search_entry.get()} not found")
+            tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
+
+        # Clear search entry
+        tr_attend_search_entry.delete(0, "end")
 
     except Exception as e:
-        my_db.rollback()  # Rollback changes in case of an error
+        tr_attend_disp_label.configure(text="An error occurred. Please try again.")
+        tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
+
+def pay_token():
+    global teacher_tree, session_combo, grade_combo, subject_combo, pay_token_entry, tr_win_disp
+    try:
+        pos=teacher_tree.selection()
+        value = teacher_tree.item(pos,"values")
+        teacher_id = value[1]
+
+        # Get the active term ID
+        cur.execute("SELECT term_id FROM term WHERE is_active=1")
+        term_id = cur.fetchone()
+        if term_id:
+            active_term_id = term_id[0]
+        else:
+            messagebox.showerror("Remedial App", "No active term found.")
+            return
+
+        # Check if the teacher has any attendance records
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM teacher_attendance
+            WHERE teacher_id = %s
+        """, (teacher_id,))
+        attendance_count = cur.fetchone()[0]
+
+        if attendance_count == 0:
+            messagebox.showerror("Remedial App", "Tokens cannot be paid for a teacher without\nattendance records.")
+            return
+
+        # Calculate the total session amount for the teacher's attendance records
+        cur.execute("""
+            SELECT SUM(session_amount)
+            FROM teacher_attendance
+            WHERE teacher_id = %s
+        """, (teacher_id,))
+        total_session_amount = cur.fetchone()[0]
+        total_session_amount = Decimal(total_session_amount) if total_session_amount else Decimal(0)
+
+        # Get the token amount paid
+        token_paid = pay_token_entry.get()
+        try:
+            token_paid = Decimal(token_paid)
+        except ValueError:
+            messagebox.showerror("Remedial App", "Invalid token amount. Please enter a valid number.")
+            return
+
+        # Validate that the token paid does not exceed the total session amount
+        if token_paid > total_session_amount:
+            messagebox.showerror("Remedial App",
+                                 f"Token payment exceeds the total\nsession amount ({total_session_amount}).")
+            return
+
+        # Check the current token balance in the teacher_token table
+        cur.execute("""
+            SELECT token_paid 
+            FROM teacher_token 
+            WHERE teacher_id = %s AND term_id = %s
+        """, (teacher_id, active_term_id))
+        token = cur.fetchone()
+
+        current_token_balance = Decimal(token[0]) if token else Decimal(0)
+
+        # Ensure the entered token amount does not exceed the available balance
+        required_balance = total_session_amount - current_token_balance
+        if token_paid > required_balance:
+            messagebox.showerror("Remedial App",
+                                 f"The entered token amount exceeds the \nrequired balance of {required_balance}.")
+            return
+
+        # Add the token payment to the current balance
+        new_token = current_token_balance + token_paid
+
+        # Insert or update the teacher's token record in the teacher_token table
+        cur.execute("""
+            INSERT INTO teacher_token (teacher_id, term_id, token_paid)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE token_paid = VALUES(token_paid)
+        """, (teacher_id, active_term_id, new_token))
+        my_db.commit()
+
+        # Retrieve attendance records in ascending order
+        cur.execute("""
+            SELECT teacher_attendance_id, session_amount
+            FROM teacher_attendance
+            WHERE teacher_id = %s
+            ORDER BY teacher_attendance_id ASC
+        """, (teacher_id,))
+        attendance_records = cur.fetchall()
+
+        payment_amount = new_token
+        surplus_token = Decimal(0)
+
+        # Process attendance records
+        for record in attendance_records:
+            attendance_id, session_amount = record
+            session_amount = Decimal(session_amount)
+
+            if payment_amount + surplus_token >= session_amount:
+                # Archive attendance record
+                cur.execute("""
+                    INSERT INTO teacher_attendance_archive 
+                        (teacher_id, week_number_id, session, grade, session_amount, subject, term_id)
+                    SELECT teacher_id, week_number_id, session, grade, session_amount, subject, term_id
+                    FROM teacher_attendance
+                    WHERE teacher_attendance_id = %s
+                """, (attendance_id,))
+
+                # Delete the attendance record
+                cur.execute("""
+                    DELETE FROM teacher_attendance
+                    WHERE teacher_attendance_id = %s
+                """, (attendance_id,))
+
+                # Deduct the session amount from payment
+                payment_amount -= session_amount
+            else:
+                surplus_token = payment_amount + surplus_token
+                payment_amount = Decimal(0)  # All tokens used
+                break
+
+        # Update the teacher's token balance with the remaining amount
+        cur.execute("""
+            UPDATE teacher_token
+            SET token_paid = %s
+            WHERE teacher_id = %s AND term_id = %s
+        """, (payment_amount + surplus_token, teacher_id, active_term_id))
+
+        # Commit changes
+        my_db.commit()
+
+        # Inform the user
+        messagebox.showinfo("Remedial App", "Payment processing completed successfully.")
+        pay_token_entry.delete(0, END)
+        display_teachers()
+
+    except ValueError as ex:
+        messagebox.showerror("Remedial App", f"Invalid input: {ex}\nPlease check your entries.")
+    except Exception as ex:
+        messagebox.showerror("Remedial App", f"An unexpected error occurred: {ex}")
+
+
+def track_teacher_attendance():
+    global teacher_tree,session_combo,grade_combo,subject_combo,pay_token_entry,tr_win_disp
+    try:
+        # Step 1: Get the active term ID
+        cur.execute("""SELECT term_id FROM term WHERE is_active=1""")
+        term = cur.fetchone()
+        if not term:
+            messagebox.showwarning("Remedial App", "No active term found. Please set an active term.")
+            return
+        term_id = term[0]
+
+        # Step 2: Get the selected teacher ID from the treeview
+        try:
+            pos = teacher_tree.selection()
+            value = teacher_tree.item(pos, "values")
+            teacher_id = int(value[1])  # Extract and convert teacher_id
+        except IndexError:
+            messagebox.showerror("Remedial App", "Please select a teacher from the list.")
+            return
+
+        # Step 3: Get the active week number ID
+        cur.execute("""SELECT week_number_id FROM week_number WHERE is_active=1 AND term_id=%s""", (term_id,))
+        week_no = cur.fetchone()
+        if not week_no:
+            messagebox.showwarning("Remedial App", "No active week found. Please set an active week.")
+            return
+        week_number_id = week_no[0]
+
+        # Step 4: Get the session and learning area
+        session = session_combo.get()
+        learning_area = subject_combo.get()
+        if not session or not learning_area:
+            messagebox.showerror("Remedial App", "Please select both the session and subject.")
+            return
+
+        # Step 5: Determine the session amount
+        if session in ["Morning", "Evening"]:
+            cur.execute("""SELECT weekday FROM termly_pay""")
+        elif session == "Saturday":
+            cur.execute("""SELECT weekend FROM termly_pay WHERE""")
+        else:
+            messagebox.showerror("Remedial App", "Invalid session type selected.")
+            return
+
+        pay = cur.fetchone()
+        if not pay or pay[0] < 1:
+            messagebox.showwarning("Remedial App", "Please set the weekly or weekend pay for the current term.")
+            return
+        session_amount = float(pay[0])
+
+        # Step 6: Get the grade for the session
+        tr_attend_grade = grade_combo.get()
+        if not tr_attend_grade:
+            messagebox.showerror("Remedial App", "Please select a grade.")
+            return
+
+        # # Step 7: Retrieve the teacher's total and deduct any paid amounts
+        # cur.execute("""
+        #     SELECT teacher_total FROM teacher_attendance
+        #     WHERE teacher_id=%s ORDER BY teacher_attendance_id DESC LIMIT 1
+        # """, (teacher_id,))
+        # prev = cur.fetchone()
+        # prev_total = float(prev[0]) if prev else 0  # Use 0 if no previous total
+
+        # # Check if the teacher has any payment recorded in teacher_token
+        # cur.execute("""
+        #     SELECT token_paid FROM teacher_token
+        #     WHERE teacher_id=%s AND term_id=%s
+        # """, (teacher_id, term_id))
+        # payment = cur.fetchone()
+        # payment_amount = float(payment[0]) if payment else 0
+
+        # # Deduct the payment amount from the previous total
+        # if payment_amount > 0:
+        #     new_teacher_total = prev_total + session_amount - payment_amount
+
+        #     # Clear the payment record to avoid repeated deductions
+        #     cur.execute("""
+        #         UPDATE teacher_token SET token_paid=0
+        #         WHERE teacher_id=%s AND term_id=%s
+        #     """, (teacher_id, term_id))
+        #     my_db.commit()
+        # else:
+        #     new_teacher_total = prev_total + session_amount
+
+        # Step 8: Insert or update attendance record
+        if teacher_id and week_number_id and session and tr_attend_grade and session_amount and learning_area:
+            cur.execute("""
+                INSERT  INTO teacher_attendance
+                    (teacher_id, week_number_id, session, grade, session_amount,  subject, term_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (teacher_id, week_number_id, session, tr_attend_grade, session_amount, learning_area, term_id))
+            my_db.commit()
+            tr_win_disp.configure(text="Teacher attendance recorded successfully")
+            tr_win_disp.after(4000, lambda: tr_win_disp.configure(text=""))
+            display_teachers()
+        else:
+            messagebox.showerror("Remedial App", "Submission failed. Please fill all required fields.")
+            return
+
+    except Exception as e:
+        messagebox.showerror("Remedial App", f"Error: {e} Occurred")
+    finally:
+        grade_combo.set("")
+        session_combo.set("")
+        subject_combo.set("")
+
+#setting week one as default in each new term
+def week_one():
+    cur.execute("UPDATE week_number SET is_active=0 WHERE is_active=1 ")
+    cur.execute("""UPDATE week_number SET is_active=1 WHERE selected_week='One' AND 
+                term_id=(SELECT term_id FROM term WHERE is_active=1)""")
+    my_db.commit()
+    cur.execute("SELECT selected_week FROM week_number WHERE is_active=1")
+    week_number=cur.fetchone()[0]
+    week_combo.set(week_number)
+def set_default_week(e=None):
+    selected_week=week_combo.get()
+    #deactivating the rest of terms
+    cur.execute("UPDATE week_number SET  is_active=0 WHERE is_active=1")
+    my_db.commit()
+    #updating selected term to active
+    cur.execute("""UPDATE week_number SET is_active=1  WHERE selected_week=%s AND
+                term_id=(SELECT term_id FROM term WHERE is_active=1)""",(selected_week,))
+    my_db.commit()
+    # print(selected_week)
+def retrieve_week():
+    # retrieving selected term and setting it to default week
+    cur.execute("""SELECT selected_week FROM week_number WHERE is_active=1
+              AND term_id=(SELECT term_id FROM term WHERE is_active=1)""")
+    default = cur.fetchone()
+    if default:
+        week_no = default[0]
+        week_combo.set(week_no)
+    else:
+        week_combo.set(weeks[0] if weeks else '')
+
+
+def promote_learners_func(e=None):
+    global move_learner_combo, undo_move_combo
+    from_grade = move_learner_combo.get()
+    to_grade = undo_move_combo.get()
+
+    if from_grade == "Move From Grade" or to_grade == "Move To":
+        messagebox.showinfo("Remedial App", "Select both From and To Grade to proceed.")
+
+
+        return
+
+    if from_grade == to_grade:
+        messagebox.showinfo("Remedial App", "From and To Grades cannot be the same.")
+        return
+
+    # Define valid adjacent moves
+    valid_moves = {
+        "Seven": ["Eight"],
+        "Eight": ["Seven", "Nine"],
+        "Nine": ["Eight", "Archive"],
+        "Archive": ["Nine"]
+    }
+
+    # Check if the move is valid
+    if to_grade not in valid_moves.get(from_grade, []):
+        messagebox.showinfo("Remedial App", f"Invalid move! You cannot move from {from_grade} to {to_grade}.")
+        return
+
+    # Determine where to check for the grade
+    if from_grade == "Archive":
+        cur.execute("SELECT COUNT(*) FROM archive WHERE grade = %s", (to_grade,))
+        grade_count = cur.fetchone()[0]
+    else:
+        cur.execute("SELECT COUNT(*) FROM learner WHERE grade = %s", (from_grade,))
+        grade_count = cur.fetchone()[0]
+
+    if grade_count == 0:
+        messagebox.showinfo("Remedial App", f"The grade '{from_grade}' is not available in the database.")
+        return
+
+    try:
+        # Promote learners within the learner table
+        if from_grade == "Seven" and to_grade == "Eight":
+            cur.execute("UPDATE learner SET grade='Eight' WHERE grade='Seven'")
+        elif from_grade == "Eight" and to_grade == "Seven":
+            cur.execute("UPDATE learner SET grade='Seven' WHERE grade='Eight'")
+        elif from_grade == "Eight" and to_grade == "Nine":
+            cur.execute("UPDATE learner SET grade='Nine' WHERE grade='Eight'")
+        elif from_grade == "Nine" and to_grade == "Eight":
+            cur.execute("UPDATE learner SET grade='Eight' WHERE grade='Nine'")
+
+        # Move Grade 9 learners to the archive
+        elif from_grade == "Nine" and to_grade == "Archive":
+            cur.execute("SELECT * FROM learner WHERE grade='Nine'")
+            rows = cur.fetchall()
+
+            if rows:
+                for item in rows:
+                    cur.execute("""
+                        INSERT INTO archive(learner_id, first, second, surname, grade)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (item[0], item[1], item[2], item[3], item[4]))
+
+                cur.execute("DELETE FROM learner WHERE grade='Nine'")
+                messagebox.showinfo("Move Learner", "Learners were successfully archived.")
+            else:
+                messagebox.showinfo("Remedial App", "No Grade Nine learners were found!")
+
+        # Restore learners from archive to learner table
+        elif from_grade == "Archive" and to_grade == "Nine":
+            cur.execute("SELECT * FROM archive WHERE grade='Nine'")
+            rows = cur.fetchall()
+
+            if rows:
+                for item in rows:
+                    cur.execute("""
+                        INSERT INTO learner(learner_id, first, second, surname, grade)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (item[0], item[1], item[2], item[3], item[4]))
+
+                cur.execute("DELETE FROM archive WHERE grade='Nine'")
+                messagebox.showinfo("Move Learner", "Learners were successfully restored from archive.")
+            else:
+                messagebox.showinfo("Remedial App", "No Grade Nine learners were found in the archive!")
+
+        my_db.commit()
+        display_learners()
+
+    except Exception as e:
+        my_db.rollback()
         messagebox.showerror("Error", f"An error occurred: {e}")
-
-def promote_learners_func():
-    try:
-        resp=messagebox.askyesno("Remedial App","Are you sure you want to\nmove learners to next grades?")
-        if resp:
-        # Step 1: Update learners from Grade 7 to Grade 8
-            cur.execute("""
-                UPDATE learner
-                SET grade = 'Eight'
-                WHERE grade = 'Seven'
-            """)
-
-            # Step 2: Update learners from Grade 8 to Grade 9
-            cur.execute("""
-                UPDATE learner
-                SET grade = 'Nine'
-                WHERE grade = 'Eight'
-            """)
-
-            # Commit the changes
-            my_db.commit()
-            messagebox.showinfo("Move", "Learners have been successfull\nmoved to the next grade.")
-            display_learners()
-        else:
-            pass
-    except Exception as e:
-        my_db.rollback()  # Rollback changes in case of an error
-        messagebox.showerror("Error", f"An error occurred:\n{e}")
-
 
 #search function
 def binding(e):
-    learner_menu.tk_popup(e.x,e.y)
+    # learner_menu.tk_popup(e.x,e.y)
+    x, y = e.x_root, e.y_root  # Get the absolute mouse position
+    x = max(0, min(x, e.widget.winfo_screenwidth() - 10))  # Ensure it stays within screen width
+    y = max(0, min(y, e.widget.winfo_screenheight() - 10))  # Ensure it stays within screen height
+    learner_menu.tk_popup(x, y)
 
     #deleting learners
 def delete_transaction():
@@ -158,7 +625,7 @@ def delete_transaction():
                         """, (transaction_id_to_delete[0],))
 
                         my_db.commit()  # Commit the changes
-
+                        display_learners()
             else:
                 pass  # If user cancels, do nothing
     except Exception as e:
@@ -193,9 +660,14 @@ def search_func(e=None):
     search_by = search_by_combo.get()  # Get the search criteria (Adm No or Name)
     selected_grade = disp_bal_combo.get().strip().lower()  # Get and normalize the selected grade
 
-    # Check if search criteria is not selected
+    # Ensure the user selects a search criteria before proceeding
     if search_by == "Search By":
-        messagebox.showinfo("Select Criteria", "Please select a search criteria to proceed.")
+        messagebox.showinfo("Select Criteria", "Please select a search criteria before searching.")
+        return
+
+    # Check if search entry is blank
+    if not search_term:
+        messagebox.showwarning("Input Error", "Search entry cannot be blank.")
         return
 
     try:
@@ -219,8 +691,8 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    IFNULL(SUM(t.amount_paid), 0) AS amount_paid,
-                    (SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - IFNULL(SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
@@ -237,8 +709,8 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    IFNULL(SUM(t.amount_paid), 0) AS amount_paid,
-                    (SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - IFNULL(SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
@@ -257,8 +729,8 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    IFNULL(SUM(t.amount_paid), 0) AS amount_paid,
-                    (SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - IFNULL(SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
@@ -276,8 +748,8 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    IFNULL(SUM(t.amount_paid), 0) AS amount_paid,
-                    (SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - IFNULL(SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
@@ -306,107 +778,88 @@ def search_func(e=None):
                     )
                 )
         else:
-            # messagebox.showinfo("Search Results", "Not found")
             display_learners()
             search_label.configure(text="Not found")
-            search_label.after(4000,lambda:search_label.configure(text=""))
+            search_label.after(4000, lambda: search_label.configure(text=""))
 
     except Exception as e:
         messagebox.showerror("Database Error", f"An error occurred: {e}")
+    finally:
+        learner_search_entry.delete(0,END)
+
 def make_payment(e=None):
     try:
-        #select learner id from the learner treeview
-        pos=learner_tree.selection()
-        adm=learner_tree.item(pos,"values")
-        learner_id=adm[1]
-        # display_learner()
-        amount_paid = amount_entry.get()
-        amount_paid = float(amount_paid)
+        # Select learner ID from the learner treeview
+        pos = learner_tree.selection()
+        adm = learner_tree.item(pos, "values")
+        learner_id = adm[1]
 
+        amount_paid = float(amount_entry.get())
 
         # Retrieve the current term's number
         cur.execute("SELECT term_number FROM term WHERE is_active = 1")
         term_no = cur.fetchone()
-        if term_no:
-            current_term_number = term_no[0]
-        else:
+        if not term_no:
             messagebox.showwarning("Remedial App", "No active term found. Please check term setup.")
             return
-        
-        # If the current term is term one, skip previous term balance checks
-        if current_term_number == 1:
-            prev_term_id = None  # No previous term exists for term one
-        else:
-            # Retrieve the previous term ID
-            cur.execute("SELECT term_id FROM term WHERE term_number = %s", (current_term_number - 1,))
-            prev_id = cur.fetchone()
-            prev_term_id = prev_id[0] if prev_id else None
-            
-            if not prev_term_id:
-                messagebox.showwarning("Remedial App", "Could not find previous term details. Please verify terms.")
-                return
-            
-            # Check if the learner has any balance for the previous term
-            cur.execute("""SELECT amount_paid, balance FROM transactions 
-                            WHERE learner_id = %s AND term_id = %s""", (learner_id, prev_term_id))
+        current_term_number = term_no[0]
+
+        # Determine the previous term ID (if applicable)
+        prev_term_id = None if current_term_number == 1 else cur.execute(
+            "SELECT term_id FROM term WHERE term_number = %s", (current_term_number - 1,)
+        ).fetchone()
+        prev_term_id = prev_term_id[0] if prev_term_id else None
+
+        # Check if learner has outstanding balance from the previous term
+        if prev_term_id:
+            cur.execute("SELECT amount_paid, balance FROM transactions WHERE learner_id = %s", (learner_id,))
             balance = cur.fetchone()
-            
-            if balance:
-                prev_amount_paid = balance[0]  # Amount already paid for the previous term
-                prev_balance = balance[1]     # Remaining balance for the previous term
-            else:
-                prev_amount_paid = 0
-                prev_balance = 0  # No record means no payments made
-            
-            # If the learner has not fully cleared the previous term's balance, block payment
+            prev_balance = balance[1] if balance else 0
+            prev_amount_paid = balance[0] if balance else 0
+
             if prev_balance > 0 or prev_amount_paid == 0:
                 cur.execute("SELECT first, second, surname FROM learner WHERE learner_id = %s", (learner_id,))
                 name = cur.fetchone()
                 fullname = f"\n{name[0].title()} {name[1].title()} {name[2].title()}"
                 messagebox.showwarning(
-                    "Remedial App", 
-                    f"{fullname} has not cleared\ntheir previous term fees."
-                    f"Amount paid so\nfar is: KSH {prev_amount_paid:.2f}.")
+                    "Remedial App",
+                    f"{fullname} has not cleared\ntheir previous term fees. Amount paid so\nfar is: KSH {prev_amount_paid:.2f}."
+                )
                 return
-        
-        # Retrieve termly pay for the learner's grade
-        cur.execute("SELECT grade FROM learner WHERE learner_id = %s", (learner_id,))
-        grade_data = cur.fetchone()
-        if not grade_data:
-            messagebox.showwarning("Remedial App", "Learner grade not found. Please verify learner details.")
-            return    
-        cur.execute("""SELECT lnr_pay FROM termly_pay WHERE 
-                        term_id = (SELECT term_id FROM term WHERE is_active = 1)""")
+
+        # Retrieve the termly fee (lnr_pay) for the learner's grade
+        cur.execute("SELECT lnr_pay FROM termly_pay LIMIT 1")
         amt = cur.fetchone()
         tot = float(amt[0]) if amt else 0
-        
+
         if tot < 1:
             cur.execute("SELECT selected_term FROM term WHERE is_active = 1")
             is_active = cur.fetchone()[0]
             messagebox.showwarning("Remedial App", f"Set Fee payable for {is_active}")
             return
-        
+
         # Check for existing transaction records for the current term
         cur.execute("""SELECT amount_paid, balance FROM transactions
-                        WHERE learner_id = %s AND term_id = (SELECT term_id FROM term WHERE is_active = 1)""", (learner_id,))
+                        WHERE learner_id = %s AND term_id = (SELECT term_id FROM term WHERE is_active = 1)""",
+                    (learner_id,))
         record = cur.fetchone()
-        
+
         if record:
             new_amount = float(record[0]) + amount_paid
             new_balance = float(record[1]) - amount_paid
         else:
             new_amount = amount_paid
             new_balance = tot - amount_paid
-        
+
         # Ensure the amount paid doesn't exceed the termly fee
         if new_amount > tot:
             messagebox.showwarning("Remedial App", "Amount Paid cannot exceed termly\npayable amount")
             return
-        
+
         # Retrieve the current term ID
         cur.execute("SELECT term_id FROM term WHERE is_active = 1")
         active = cur.fetchone()[0]
-        
+
         # Insert or update the transaction
         cur.execute("""INSERT INTO transactions(amount_paid, learner_id, term_id, balance)
                         VALUES (%s, %s, %s, %s)
@@ -414,26 +867,26 @@ def make_payment(e=None):
                         amount_paid = VALUES(amount_paid),
                         balance = VALUES(balance)""", (new_amount, learner_id, active, new_balance))
         my_db.commit()
-        
+
         # Record transaction history
         comment = (From_entry.get()).title()
-        if len(comment)>25:
+        if len(comment) > 25:
             raise ValueError("Comment exceeds 25 characters")
         cur.execute("SELECT transaction_id FROM transactions ORDER BY transaction_id DESC LIMIT 1")
         item = cur.fetchone()
         transaction_id = item[0] if item else None
-        
+
         cur.execute("""INSERT INTO transaction_history(learner_id, amount, balance, term_id, comment, transaction_id)
                     VALUES (%s, %s, %s, %s, %s, %s)""",
                     (learner_id, new_amount, new_balance, active, comment, transaction_id))
         my_db.commit()
-        
+
         # Clean up old records if the balance is cleared
         cur.execute("""DELETE FROM transaction_history WHERE learner_id = (
                         SELECT learner_id FROM transactions WHERE balance = 0 AND learner_id = %s 
                         AND term_id = (SELECT term_id FROM term WHERE is_active = 1))""", (learner_id,))
         my_db.commit()
-        
+
         # Clear input and notify success
         amount_entry.delete(0, END)
         disp_label.configure(text="Payment saved successfully")
@@ -453,24 +906,95 @@ def disable_combo(e):
             tr_title_combo.configure(state=NORMAL)
             reg_grade_combo.configure(state=DISABLED)
     
-#display learners
+# #display learners
+# def display_teachers():
+#     global teacher_tree
+#     #retrieving learners from database
+#     cur.execute("""SELECT teacher_id,title,first,second,surname FROM teacher""")
+#     teacher=cur.fetchall()
+#     if teacher:
+#         for index,teacher in enumerate (teacher,start=1):
+#             teacher_tree.insert("",END,values=(index,teacher[0],f"{teacher[1].title() } {teacher[2].title()} {teacher[3].title()} {teacher[4].title()}"))
+#     else:
+#         messagebox.showinfo("Remedial App","No records for teachers")
+# def display_teachers():
+#     global teacher_tree
+#     try:
+#         # Clear the tree before inserting new data
+#         teacher_tree.delete(*teacher_tree.get_children())
+#
+#         # Retrieve teacher details along with the token paid amount
+#         cur.execute("""
+#             SELECT t.teacher_id, t.title, t.first, t.second, t.surname,
+#                    IFNULL(SUM(tt.token_paid), 0) AS total_paid
+#             FROM teacher t
+#             LEFT JOIN teacher_token tt ON t.teacher_id = tt.teacher_id
+#             GROUP BY t.teacher_id
+#         """)
+#         teachers = cur.fetchall()
+#
+#         if teachers:
+#             for index, teacher in enumerate(teachers, start=1):
+#                 teacher_id, title, first, second, surname, total_paid = teacher
+#
+#                 # Insert teacher details into the Treeview with numbering and token paid amount
+#                 teacher_tree.insert(
+#                     "", "end",
+#                     values=(index, teacher_id, f"{title.title()} {first.title()} {second.title()} {surname.title()}",
+#                             total_paid)
+#                 )
+#         else:
+#             messagebox.showinfo("Remedial App", "No records for teachers")
+#     except Exception as e:
+#         messagebox.showerror("Remedial App", f"Error: {e}")
 def display_teachers():
     global teacher_tree
-    #retrieving learners from database
-    cur.execute("""SELECT teacher_id,title,first,second,surname FROM teacher""")
-    teacher=cur.fetchall()
-    if teacher:
-        for index,teacher in enumerate (teacher,start=1):
-            teacher_tree.insert("",END,values=(index,teacher[0],f"{teacher[1].title() } {teacher[2].title()} {teacher[3].title()} {teacher[4].title()}"))
-    else:
-        messagebox.showinfo("Remedial App","No records for teachers")     
+    try:
+        # Clear the tree before inserting new data
+        teacher_tree.delete(*teacher_tree.get_children())
+
+        # Retrieve teacher details along with the token paid amount and total amount owed
+        cur.execute("""
+            SELECT t.teacher_id, t.title, t.first, t.second, t.surname, 
+                   IFNULL(SUM(tt.token_paid), 0) AS total_paid,
+                   IFNULL(SUM(ta.session_amount), 0) AS total_owed
+            FROM teacher t
+            LEFT JOIN teacher_token tt ON t.teacher_id = tt.teacher_id
+            LEFT JOIN teacher_attendance ta ON t.teacher_id = ta.teacher_id
+            GROUP BY t.teacher_id
+        """)
+        teachers = cur.fetchall()
+
+        if teachers:
+            for index, teacher in enumerate(teachers, start=1):
+                teacher_id, title, first, second, surname, total_paid, total_owed = teacher
+
+                # Calculate balance (owed - paid)
+                balance = total_owed - total_paid
+
+                # Insert teacher details into the Treeview with numbering, token paid amount, and balance
+                teacher_tree.insert(
+                    "", "end",
+                    values=(index, teacher_id, f"{title.title()} {first.title()} {second.title()} {surname.title()}",
+                            total_paid, total_owed, balance)
+                )
+        else:
+            messagebox.showinfo("Remedial App", "No records for teachers")
+    except Exception as e:
+        messagebox.showerror("Remedial App", f"Error: {e}")
+
+
 def display_learners(e=None):
     try:
         selected_option = disp_bal_combo.get()
 
+        # Get the current term's lnr_pay without linking to term_id
+        cur.execute("SELECT lnr_pay FROM termly_pay LIMIT 1")
+        termly_pay = cur.fetchone()
+        lnr_pay = termly_pay[0] if termly_pay else 0  # Default to 0 if no value exists
+
         # Determine if displaying all learners or learners from a specific grade
         if selected_option == "Display all Learners":
-            # Query to retrieve all learners and their balances
             cur.execute("""
             SELECT 
                 learner.learner_id, 
@@ -479,15 +1003,14 @@ def display_learners(e=None):
                 learner.second, 
                 learner.surname, 
                 IFNULL(SUM(transactions.amount_paid), 0) AS amount_paid, 
-                (SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - IFNULL(SUM(transactions.amount_paid), 0) AS balance
+                %s - IFNULL(SUM(transactions.amount_paid), 0) AS balance
             FROM learner
             LEFT JOIN transactions 
                 ON learner.learner_id = transactions.learner_id 
                 AND transactions.term_id = (SELECT term_id FROM term WHERE is_active = 1)
             GROUP BY learner.learner_id
-            """)
+            """, (lnr_pay,))
         else:
-            # Query to retrieve learners from a specific grade and their balances
             cur.execute("""
             SELECT 
                 l.learner_id,
@@ -496,14 +1019,14 @@ def display_learners(e=None):
                 l.second,
                 l.surname,
                 IFNULL(SUM(t.amount_paid), 0) AS amount_paid,
-                (SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - IFNULL(SUM(t.amount_paid), 0) AS balance
+                %s - IFNULL(SUM(t.amount_paid), 0) AS balance
             FROM learner l
             LEFT JOIN transactions t 
                 ON l.learner_id = t.learner_id 
                 AND t.term_id = (SELECT term_id FROM term WHERE is_active = 1)
             WHERE l.grade = %s
             GROUP BY l.learner_id
-            """, (selected_option,))
+            """, (lnr_pay, selected_option))
 
         learners = cur.fetchall()
 
@@ -525,13 +1048,11 @@ def display_learners(e=None):
                     )
                 )
         else:
-            if selected_option == "Display all Learners":
-                messagebox.showinfo("Remedial App", "No records found for any learners.")
-            else:
-                messagebox.showinfo("Remedial App", f"No records found for grade {selected_option}.")
+            messagebox.showinfo("Remedial App", f"No records found for {'any learners' if selected_option == 'Display all Learners' else 'grade ' + selected_option}.")
 
     except Exception as e:
         messagebox.showerror("Remedial App", f"An error occurred: {e}")
+
                  
 #clear person_win boxes
 def clear_person_win():
@@ -722,71 +1243,26 @@ def grades_list():
 #terms function
 def term_list():
     terms=["Term One,2025",
-        "Term Two, 2025",
+        "Term Two,2025",
         "Term Three, 2025",
         "Term One,2026",
-        "Term Two, 2026",
-        "Term Three, 2026",
-        "Term One, 2027",
-        "Term Two, 2027",
-        "Term Three, 2027",
-        "Term One, 2028",
-        "Term Two, 2028",
-        "Term Three, 2028",
-        "Term One, 2029",
-        "Term Two, 2029",
-        "Term Three, 2029",
-        "Term One, 2030",
-        "Term Two, 2030",
+        "Term Two,2026",
+        "Term Three,2026",
+        "Term One,2027",
+        "Term Two,2027",
+        "Term Three,2027",
+        "Term One,2028",
+        "Term Two,2028",
+        "Term Three,2028",
+        "Term One,2029",
+        "Term Two,2029",
+        "Term Three,2029",
+        "Term One,2030",
+        "Term Two,2030",
         "Term Three,2030"]
     return terms
 
-# def disp_pay_hist():
-#     global pay_hist_tree
-#     # Clearing the tree
-#     pay_hist_tree.delete(*pay_hist_tree.get_children())
 
-#     # Retrieving from the database using a join
-#     cur.execute("""SELECT l.learner_id, l.grade, l.first, l.second, l.surname,
-#                 th.amount, th.balance, th.trans_time, th.comment
-#                 FROM learner l JOIN transaction_history th ON 
-#                 l.learner_id = th.learner_id WHERE term_id = (
-#                 SELECT term_id FROM term WHERE is_active = 1)""")
-#     hist = cur.fetchall()
-
-#     if hist:
-#         for index, hist in enumerate(hist, start=1):
-#             learner_id = hist[0]
-#             learner_grade = hist[1]
-#             learner_name = f"{hist[2]} {hist[3]} {hist[4]}".title()
-#             amount_paid = hist[5]
-#             balance = hist[6]
-
-#             # Extracting the date part only and formatting it as DD-MM-YY
-#             date = hist[7]  # 'trans_time' field
-#             # if date and len(date) >= 10:  # Ensure it's valid and has at least the date part
-#             #     formatted_date = f"{date[8:10]}-{date[5:7]}-{date[2:4]}"
-            
-            
-#             formatted_date=date.strftime("%d/%m/%Y")
-
-#             comment = hist[8]
-
-#             # Inserting into the Treeview
-#             pay_hist_tree.insert(
-#                 "",
-#                 END,
-#                 values=(
-#                     index, 
-#                     learner_id, 
-#                     learner_grade, 
-#                     learner_name, 
-#                     amount_paid, 
-#                     balance, 
-#                     formatted_date,  # Formatted date only
-#                     comment
-#                 )
-#             )
 def disp_pay_hist(e=None):  
     global search_hist_entry,pay_hist_tree,search_hist_disp
     pay_hist_tree.delete(*pay_hist_tree.get_children()) 
@@ -809,83 +1285,108 @@ def disp_pay_hist(e=None):
         else:
             search_hist_disp.configure(text=f"Record with Adm {search_hist_entry.get()} not found")
             search_hist_disp.after(4000,lambda:search_hist_disp.configure(text=""))
-        
+            call_pay_hist()
             search_hist_entry.delete(0,END)
     except Exception as e:
         messagebox.showerror("Remedial App",f"{e}")
+        call_pay_hist()
 # #setting termly pay
 # #windows functions
-#payment_history_func
+
+def call_pay_hist():
+    global pay_hist_tree
+    cur.execute("""SELECT l.learner_id, l.grade, l.first, l.second, l.surname,
+                   th.amount, th.balance, th.trans_time, th.comment FROM learner l
+                   JOIN transaction_history th ON l.learner_id = th.learner_id
+                   ORDER BY trans_time DESC""")
+    h = cur.fetchall()
+    # Insert fetched records into the treeview
+    for index, record in enumerate(h, start=1):
+        time = record[7]
+        formatted_date = time.strftime("%d-%m-%Y")
+        pay_hist_tree.insert("", END, values=(index, record[0], record[1], f"{record[2]} {record[3]} {record[4]}",
+                                              record[5], record[6], formatted_date, record[8]))
+    # Check if records exist, else return
 def payment_history_func():
-    global pay_hist_tree,search_hist_entry,search_hist_disp
-    #learner treeview (# name,adm,grade,paid,bal,date,comment)
-    #style 
-    pay_hist_win=ctk.CTkToplevel(root)
-    pay_hist_win.geometry("950x400+50+10")
-    pay_hist_win.resizable(width=False,height=False)
+    global pay_hist_tree, search_hist_entry, search_hist_disp
+
+    # Fetch transaction history from the database
+    cur.execute("""SELECT l.learner_id, l.grade, l.first, l.second, l.surname,
+                th.amount, th.balance, th.trans_time, th.comment FROM learner l
+                JOIN transaction_history th ON l.learner_id = th.learner_id
+                ORDER BY trans_time DESC""")
+    h = cur.fetchall()
+
+    # Check if records exist, else return
+    if not h:
+        messagebox.showinfo("Remedial App", "No transaction history records")
+        return
+
+    # Create the window only if there are records
+    pay_hist_win = ctk.CTkToplevel(root)
+    pay_hist_win.geometry("830x400+50+10")
+    pay_hist_win.resizable(width=False, height=False)
     pay_hist_win.transient(root)
     pay_hist_win.grab_set()
     pay_hist_win.title("Monitor Tr. Attendance")
     pay_hist_win.after(100, lambda: pay_hist_win.lift())  # Delay lifting the window
-    pay_hist_win.after(200, lambda: pay_hist_win.focus_force())  # Delay forcing 
-    pay_hist_tree_frame=ctk.CTkFrame(pay_hist_win)
-    pay_hist_tree_scroll=Scrollbar(pay_hist_tree_frame,orient=VERTICAL)
-    pay_hist_tree_scroll.pack(side=RIGHT,fill=Y)
-    pay_hist_tree_frame.place(x=20,y=30)
-    pay_hist_tree=ttk.Treeview(pay_hist_tree_frame,yscrollcommand=learner_tree_scroll.set,height=12,
-    selectmode="extended") # name,id,grade,paid,bal,date,comment
+    pay_hist_win.after(200, lambda: pay_hist_win.focus_force())  # Delay forcing focus
+
+    pay_hist_tree_frame = ctk.CTkFrame(pay_hist_win)
+    pay_hist_tree_scroll = Scrollbar(pay_hist_tree_frame, orient=VERTICAL)
+    pay_hist_tree_scroll.pack(side=RIGHT, fill=Y)
+    pay_hist_tree_frame.place(x=20, y=30)
+
+    pay_hist_tree = ttk.Treeview(pay_hist_tree_frame, yscrollcommand=pay_hist_tree_scroll.set, height=12,
+                                 selectmode="extended")
     pay_hist_tree_scroll.configure(command=pay_hist_tree.yview)
-    pay_hist_tree["columns"]=("no","ID","grade","name","paid","balance","date","comment")
-    pay_hist_tree.column("#0",width=0,stretch=NO)
-    pay_hist_tree.column("no",width=40,anchor="center",minwidth="35")
-    pay_hist_tree.column("ID",width=40,minwidth=80,anchor=CENTER)
-    pay_hist_tree.column("grade",width=80,minwidth=60,anchor=CENTER)
-    pay_hist_tree.column("name",width=220,minwidth=100,anchor=W)
-    pay_hist_tree.column("paid",width=80,minwidth=75,anchor=CENTER)
-    pay_hist_tree.column("balance",width=60,minwidth=75,anchor=CENTER)
-    pay_hist_tree.column("date",width=100,minwidth=45,anchor=CENTER)
-    pay_hist_tree.column("comment",width=280,minwidth=45,anchor=W)
-    #headings
-    pay_hist_tree.heading("#0",text="")
-    pay_hist_tree.heading("no",text="#",anchor=CENTER)
-    pay_hist_tree.heading("ID",text="Adm",anchor=CENTER)
-    pay_hist_tree.heading("grade",text="Grade",anchor=CENTER)
-    pay_hist_tree.heading("name",text="Name",anchor=W)
-    pay_hist_tree.heading("paid",text="Paid",anchor=CENTER)
-    pay_hist_tree.heading("balance",text="Bal",anchor=CENTER)
-    pay_hist_tree.heading("date",text="Date",anchor=CENTER)
-    pay_hist_tree.heading("comment",text="Comment",anchor=CENTER)
+    pay_hist_tree["columns"] = ("no", "ID", "grade", "name", "paid", "balance", "date", "comment")
+    pay_hist_tree.column("#0", width=0, stretch=NO)
+    pay_hist_tree.column("no", width=40, anchor="center", minwidth=35)
+    pay_hist_tree.column("ID", width=40, minwidth=80, anchor=CENTER)
+    pay_hist_tree.column("grade", width=80, minwidth=60, anchor=CENTER)
+    pay_hist_tree.column("name", width=180, minwidth=100, anchor=W)
+    pay_hist_tree.column("paid", width=80, minwidth=75, anchor=CENTER)
+    pay_hist_tree.column("balance", width=60, minwidth=75, anchor=CENTER)
+    pay_hist_tree.column("date", width=100, minwidth=45, anchor=CENTER)
+    pay_hist_tree.column("comment", width=200, minwidth=150, anchor=W)
+
+    # Headings
+    pay_hist_tree.heading("#0", text="")
+    pay_hist_tree.heading("no", text="#", anchor=CENTER)
+    pay_hist_tree.heading("ID", text="Adm", anchor=CENTER)
+    pay_hist_tree.heading("grade", text="Grade", anchor=CENTER)
+    pay_hist_tree.heading("name", text="Name", anchor=W)
+    pay_hist_tree.heading("paid", text="Paid", anchor=CENTER)
+    pay_hist_tree.heading("balance", text="Bal", anchor=CENTER)
+    pay_hist_tree.heading("date", text="Date", anchor=CENTER)
+    pay_hist_tree.heading("comment", text="Comment", anchor=CENTER)
     pay_hist_tree.pack()
-    #displaying all history
-    cur.execute("""SELECT l.learner_id,l.grade,l.first,l.second,l.surname,
-                th.amount,th.balance,th.trans_time,th.comment FROM learner l
-                JOIN transaction_history th ON l.learner_id=th.learner_id
-                ORDER BY trans_time DESC""")
-    h=cur.fetchall()
-    if h:
-        for index,h in enumerate(h,start=1):
-            time=h[7]
-            formatted_date=time.strftime("%d-%m-%Y")
-            pay_hist_tree.insert("",END,values=(index,h[0],h[1],f"{h[2]} {h[3]} {h[4]}".title(),h[5],h[6],formatted_date,h[8]))
-    else:
-        messagebox.showinfo("Remedial App","No transaction history records")
-    pay_hist_w_frame=ctk.CTkFrame(pay_hist_win) 
-    pay_hist_w_frame.place(x=150,y=315)
-    search_hist_entry=ctk.CTkEntry(pay_hist_w_frame,font=("Helvetica",16),width=100
-                                  ,border_color=blue,placeholder_text="Enter Adm"
-                                  )
-    search_hist_entry.grid(row=0,column=0,sticky=W)
-    search_hist_button=ctk.CTkButton(pay_hist_w_frame,text="Search",command=disp_pay_hist
-                         ,width=60)
-    search_hist_button.grid(row=0,column=1,padx=5)
-    search_hist_disp=ctk.CTkLabel(pay_hist_w_frame,text="",font=("Helvetica",16))
-    search_hist_disp.grid(row=0,column=2)
+
+    # Insert fetched records into the treeview
+    for index, record in enumerate(h, start=1):
+        time = record[7]
+        formatted_date = time.strftime("%d-%m-%Y")
+        pay_hist_tree.insert("", END, values=(index, record[0], record[1], f"{record[2]} {record[3]} {record[4]}",
+                                              record[5], record[6], formatted_date, record[8]))
+
+    pay_hist_w_frame = ctk.CTkFrame(pay_hist_win,fg_color="transparent")
+    pay_hist_w_frame.place(x=150, y=315)
+    search_hist_entry = ctk.CTkEntry(pay_hist_w_frame, font=("Helvetica", 16), width=100,
+                                     border_color=blue, placeholder_text="Enter Adm")
+    search_hist_entry.grid(row=0, column=0, sticky=W)
+    search_hist_button = ctk.CTkButton(pay_hist_w_frame, text="Search", command=disp_pay_hist, width=60)
+    search_hist_button.grid(row=0, column=1, padx=5)
+    search_hist_disp = ctk.CTkLabel(pay_hist_w_frame, text="", font=("Helvetica", 16))
+    search_hist_disp.grid(row=0, column=2)
+
+
 #teacher display
 def teacher_win_func():
-    global teacher_tree
+    global teacher_tree,session_combo,grade_combo,subject_combo,pay_token_entry,tr_win_disp
     teacher_win=ctk.CTkToplevel(root)
-    teacher_win.geometry("600x450+600+10")
-    # teacher_win.resizable(width=False,height=False)
+    teacher_win.geometry("600x500+600+10")
+    teacher_win.resizable(width=False,height=False)
     teacher_win.transient(root)
     teacher_win.grab_set()
     teacher_win.title("Monitor Tr. Attendance")
@@ -900,7 +1401,7 @@ def teacher_win_func():
     teacher_tree_scroll.configure(command=teacher_tree.yview)
     teacher_tree["columns"]=("no","ID","name","paid","balance")
     teacher_tree.column("#0",width=0,stretch=NO)
-    teacher_tree.column("no",width=40,anchor="center",minwidth="35")
+    teacher_tree.column("no",width=40,anchor="center",minwidth=35)
     teacher_tree.column("ID",width=100,minwidth=80,anchor=CENTER)
     teacher_tree.column("name",width=250,minwidth=180,anchor=W)
     teacher_tree.column("paid",width=80,minwidth=75,anchor=CENTER)
@@ -913,8 +1414,8 @@ def teacher_win_func():
     teacher_tree.heading("paid",text="PAID",anchor=CENTER)
     teacher_tree.heading("balance",text="BAL",anchor=CENTER)
     teacher_tree.pack()
-    #tr_win_widgets
-    tr_win_w_frame=ctk.CTkFrame(teacher_win)
+    #tr_win_widgets session_combo,grade_combo,subject_combo,pay_token_entry
+    tr_win_w_frame=ctk.CTkFrame(teacher_win,fg_color="transparent")
     tr_win_w_frame.place(x=20,y=320)
     session_label=ctk.CTkLabel(tr_win_w_frame,text="Session",font=("Helvetica",16))
     session_label.grid(row=0,column=0)
@@ -924,17 +1425,34 @@ def teacher_win_func():
     grade_label.grid(row=1,column=0,pady=10)
     #accessing grades 
     grades=grades_list()
-    grade_combo=ctk.CTkComboBox(tr_win_w_frame,font=("Helvetica",16),width=110,state="readonly",button_color=blue,values=(grades))
+    grade_combo=ctk.CTkComboBox(tr_win_w_frame,font=("Helvetica",16),width=110,state="readonly",button_color=blue,values=("Seven","Eight","Nine"))
     grade_combo.grid(row=1,column=1,padx=10)
     subjects=["MATHS","ENG","KISW","INT","SST","AGRI","CAS","CRE","PTC","PPI"]
     subject_label=ctk.CTkLabel(tr_win_w_frame,text="Subject",font=("Helvetica",16))
     subject_label.grid(row=2,column=0)
     subject_combo=ctk.CTkComboBox(tr_win_w_frame,font=("Helvetica",16),width=110,state="readonly",button_color=blue,values=(subjects))
     subject_combo.grid(row=2,column=1,padx=10)
+    track_button=ctk.CTkButton(tr_win_w_frame,text="Save Changes",width=50,command=track_teacher_attendance)
+    track_button.grid(row=3,column=1,pady=10)
+    pay_token_label=ctk.CTkLabel(tr_win_w_frame,text="PayToken",font=("helvetica",16))
+    pay_token_label.grid(row=0,column=2,padx=(70,10))
+    pay_token_entry=ctk.CTkEntry(tr_win_w_frame,font=("Helvetica",16),width=110
+                                  ,border_color=blue)
+    pay_token_entry.grid(row=0,column=3)
+    pay_button = ctk.CTkButton(tr_win_w_frame, text="Save Changes", width=50,
+                               command=pay_token)
+    pay_button.grid(row=1, column=3, pady=10)
+    tr_win_disp=ctk.CTkLabel(teacher_win,text="",font=("helvetica",16))
+    tr_win_disp.place(x=250,y=450)
+    #menu
+    attend_hist_menu=tb.Menu(teacher_win)
+    teacher_win.configure(menu=attend_hist_menu)
+    attend_hist_menu.add_command(label="History",command=tr_attendance_func)
     display_teachers()
 #setting term(term/year,termly pay teacher pay,promoting learnes)
 def set_term_func():
-    global term_combo,set_term_label,lnr_amount_entry,lnr_amount_entry,tr_weekend_entry,tr_week_entry
+    global term_combo,set_term_label,lnr_amount_entry,lnr_amount_entry,tr_weekend_entry,tr_week_entry,move_learner_combo,undo_move_combo
+
     #accessing terms from term func
     terms=term_list()
     set_term_win=ctk.CTkToplevel(root)
@@ -973,16 +1491,25 @@ def set_term_func():
                                   ,border_color=blue,placeholder_text="Teacher Weekend pay"
                                   )
     tr_weekend_entry.place(x=110,y=140)
-    promote_learners=ctk.CTkButton(set_term_win,text="move learners",
-    font=("Helvetica",16),command=promote_learners_func,width=80) #should be disabled if its not term one
-    promote_learners.place(x=20,y=180)
-    undo_move_button=ctk.CTkButton(set_term_win,text="undo move",width=50,command=undo_promotion)
-    undo_move_button.place(x=180,y=180)
+
     
     button=ctk.CTkButton(set_term_win,text="Save Changes",command=lambda:set_default_term(None)
                          ,width=60)
-    button.place(x=110,y=230)
-    
+    button.place(x=20,y=230)
+    move_learners=ctk.CTkButton(set_term_win,text="Move Learners",command=lambda:promote_learners_func(None)
+                         ,width=60)
+    move_learners.place(x=150,y=230)
+    move_learner_combo = ctk.CTkComboBox(set_term_win, height=30, width=140, font=("Helvetica", 12),
+                                         border_color=blue, button_color=blue,
+                                         values=("Seven", "Eight", "Nine","Archive"), state="readonly")
+    move_learner_combo.set("Move From Grade")
+    move_learner_combo.place(x=20, y=180)
+    undo_move_combo = ctk.CTkComboBox(set_term_win, height=30, width=120, font=("Helvetica", 12),
+                                      border_color=blue, button_color=blue,
+                                      values=("Seven", "Eight", "Nine","Archive"), state="readonly")
+    undo_move_combo.place(x=170, y=180)
+    undo_move_combo.set("Move To")
+    #
     
     set_term_label=ctk.CTkLabel(set_term_win,text="",
                                 font=("helvetica",14))
@@ -1058,120 +1585,127 @@ def add_person_func():
     delete_person_button=ctk.CTkButton(person_win,text="Delete"
                          ,width=60,command=lambda:delete_person(None))
     delete_person_button.place(x=220,y=300)
+
     reg_person_label=ctk.CTkLabel(person_win,text="",
                                 font=("helvetica",14))
-    reg_person_label.place(x=80,y=340)
+    reg_person_label.place(x=60,y=340)
 
+
+# def switch_term(e=None):
+#     global term_combo
+#     selected_term = term_combo.get()
+#     # Deactivate all terms
+#     cur.execute("UPDATE term SET is_active = 0 WHERE is_active = 1")
+#     my_db.commit()
+#
+#     # Activate the selected term
+#     cur.execute("UPDATE term SET is_active = 1 WHERE selected_term = %s", (selected_term,))
+#     my_db.commit()
+#     # Update the label to indicate the active term
+#     set_term_label.configure(text=f"{selected_term}: Active")
+#     set_term_label.after(4000, lambda: set_term_label.configure(text=""))
+#     #checking whether there is a termly_pay set for the term
+#     cur.execute("""SELECT COUNT(*) FROM termly_pay WHERE term_id=(
+#     SELECT term_id FROM term WHERE is_active=1)""")
+#     termly_pay=cur.fetchone()[0]
+#     if termly_pay==0:
+#         messagebox.showwarning("Set Term","No termly pay found for the current term")
+#     # Refresh the displayed learners
+#     display_learners()
 def switch_term(e=None):
     global term_combo
     selected_term = term_combo.get()
 
-    # Resetting termly pay values: weekday, weekend, lnr_pay
-    cur.execute("""
-        SELECT weekday, weekend, lnr_pay FROM termly_pay
-        WHERE term_id = (
-            SELECT term_id FROM term WHERE is_active = 1
-        )
-    """)
-    reset = cur.fetchone()
 
-    # Handle cases where no active term exists
-    if reset:
-        weekday = reset[0]
-        weekend = reset[1]
-        lnr_pay = reset[2]
-    else:
-        # Default values if no active term exists
-        weekday = 0.00
-        weekend = 0.00
-        lnr_pay = 0.00
+    # Deactivate all terms
+    cur.execute("UPDATE term SET is_active = 0 WHERE is_active = 1")
+    my_db.commit()
 
-    if not selected_term:
-        set_term_label.configure(text="Please select a term.", text_color="red")
-        return
-
-    # Update the database to set the selected term as active
-    cur.execute("UPDATE term SET is_active = 0")  # Deactivate any active terms
+    # Activate the selected term
     cur.execute("UPDATE term SET is_active = 1 WHERE selected_term = %s", (selected_term,))
     my_db.commit()
 
-    # Retrieve the ID of the term switched into
-    cur.execute("SELECT term_id FROM term WHERE is_active = 1")
-    term_id = cur.fetchone()[0]
+    # Verify if the update worked
+    cur.execute("SELECT selected_term, is_active FROM term WHERE is_active = 1")
+    result = cur.fetchall()
 
-    # Update or insert into `termly_pay`
-    cur.execute("""
-        INSERT INTO termly_pay (term_id, weekday, weekend, lnr_pay)
-        VALUES (%s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            weekday = VALUES(weekday),
-            weekend = VALUES(weekend),
-            lnr_pay = VALUES(lnr_pay)
-    """, (term_id, weekday, weekend, lnr_pay))
-    my_db.commit()
 
-    # Update the label to indicate the active term
     set_term_label.configure(text=f"{selected_term}: Active")
     set_term_label.after(4000, lambda: set_term_label.configure(text=""))
 
-    # Refresh the displayed learners
+    # Checking if termly_pay exists
+    cur.execute("""SELECT COUNT(*) FROM termly_pay""")
+    termly_pay = cur.fetchone()[0]
+
+    if termly_pay == 0:
+        messagebox.showwarning("Set Term", "No termly pay found for the current term")
+
+    # Refresh learners
     display_learners()
+    week_one()
+
+#retrieving the set week
+
 
 def set_default_term(e):
     try:
         global term_combo, set_term_label, lnr_amount_entry, tr_weekend_entry, tr_week_entry
-        # Get the selected term from the combo box
-        selected = term_combo.get()
-        lnr_pay = lnr_amount_entry.get()
-        lnr_pay = float(lnr_pay)
-        tr_weekly_pay = tr_week_entry.get()
-        tr_weekly_pay = float(tr_weekly_pay)
-        tr_weekend_pay = tr_weekend_entry.get()
-        tr_weekend_pay = float(tr_weekend_pay)
+        selected = term_combo.get()  # Get the selected term from the combo box
 
-        if all([lnr_pay, tr_weekly_pay, tr_weekend_pay]):
+        # Get pay values
+        lnr_pay = float(lnr_amount_entry.get())  # Teacher pay
+        tr_weekly_pay = float(tr_week_entry.get())  # Weekly pay
+        tr_weekend_pay = float(tr_weekend_entry.get())  # Weekend pay
+
+        if all([lnr_pay, tr_weekly_pay, tr_weekend_pay, selected]):
             # Deactivate all terms
-            cur.execute("UPDATE term SET is_active = 0 WHERE is_active = 1")
-            my_db.commit()
+            # cur.execute("UPDATE term SET is_active = 0 WHERE is_active = 1")
+            # my_db.commit()
 
             # Activate the selected term
-            cur.execute("UPDATE term SET is_active = 1 WHERE selected_term = %s", (selected,))
-            my_db.commit()
+            # cur.execute("UPDATE term SET is_active = 1 WHERE selected_term = %s", (selected,))
+            # my_db.commit()
 
-            # Retrieve the current term id
-            cur.execute("SELECT term_id, selected_term FROM term WHERE is_active = 1")
-            term = cur.fetchone()
+            # Retrieve the current active term
+            # cur.execute("SELECT term_id, selected_term FROM term WHERE is_active = 1")
+            # term = cur.fetchone()
 
-            if term:  # Ensure term is not None
-                term_id = term[0]
-                term_name = term[1]
+
+            # if term:  # Ensure term is not None
+            #     term_id = term[0]
+            #     term_name = term[1]
 
                 # Updating teacher pay
-                cur.execute("""
-                INSERT INTO termly_pay (term_id, weekday, weekend, lnr_pay)
-                VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                weekday = VALUES(weekday),
-                weekend = VALUES(weekend),
-                lnr_pay = VALUES(lnr_pay)
-                """, (term_id, tr_weekly_pay, tr_weekend_pay, lnr_pay))
-                my_db.commit()
+            # Ensure only one record exists by deleting the previous one
+            cur.execute("DELETE FROM termly_pay")
 
-                set_term_label.configure(text=f"{term_name} was set successfully")
-                clear_term_win()
-                display_learners()
-                set_term_label.after(4000, lambda: set_term_label.configure(text=""))
-            else:
-                # If no active term is found
-                root.bell()
-                CTkMessagebox(title="Set Term", message="No active term found.", icon="warning")
+            # Insert the new record
+            cur.execute("""
+                INSERT INTO termly_pay (weekday, weekend, lnr_pay)
+                VALUES (%s, %s, %s)
+            """, (tr_weekly_pay, tr_weekend_pay, lnr_pay))
+
+            my_db.commit()
+
+            # Show success message and update UI
+            set_term_label.configure(text="Pay was set successfully")
+            set_term_label.after(4000, lambda: set_term_label.configure(text=""))
+            clear_term_win()
+            display_learners()
+
         else:
+            # If no active term is found
             root.bell()
-            CTkMessagebox(title="Set Term", message="Fill all fields to set term", icon="warning")
+            CTkMessagebox(title="Set Term", message="No active term found.", icon="warning")
+            # week_one()
+            # else:
+        #     root.bell()
+        #     CTkMessagebox(title="Set Term", message="Fill all fields to set term", icon="warning")
     except Exception as ex:
         # Catch any exceptions
-        CTkMessagebox(title="Set Term", message=f"{ex}", icon="warning")
+        CTkMessagebox(title="Set Term", message=f"An error occurred: {ex}", icon="warning")
         my_db.rollback()
+
 
 #placer
 def placer(e):
@@ -1255,8 +1789,11 @@ menu=tb.Menu(menubutton)
 menubutton["menu"]=menu 
 
 menu.add_command(label="Set Term",command=set_term_func)
+menu.add_separator()
 menu.add_command(label="Register Persons",command=add_person_func)
+menu.add_separator()
 menu.add_command(label="Learner Payment History",command=payment_history_func)
+menu.add_separator()
 # menu.add_command(label=" Display Tr. Attnd. History") #on the monitor table
 menu.add_command(label="Monitor Tr. Attendance",command=teacher_win_func)
 #within the table display teachers, their total_sessions, and total(already paid)
@@ -1265,8 +1802,13 @@ menu.add_command(label="Monitor Tr. Attendance",command=teacher_win_func)
 
 learner_menu=Menu(root,tearoff=0)
 learner_menu=Menu(learner_menu,tearoff=0)
-learner_menu.add_command(label="Delete learner",command=delete_learner)
+learner_menu.add_command(label="Delete Learner",command=delete_learner)
 learner_menu.add_separator()
+learner_menu.add_command(label="Display Teachers",command=teacher_win_func)
+learner_menu.add_separator()
+learner_menu.add_command(label="Attendance History",command=tr_attendance_func)
+learner_menu.add_separator()
+learner_menu.add_command(label="Payment History",command=payment_history_func)
 
 learner_search_entry=ctk.CTkEntry(root,width=150,font=("helvetica",16),
 placeholder_text="Search")
@@ -1280,7 +1822,7 @@ week_label=ctk.CTkLabel(root,text="Week",font=("Helvetica",16))
 week_label.place(x=390,y=10)
 week_combo=ctk.CTkComboBox(root,height=30,width=120,font=("Helvetica",16),
                                       border_color=blue,button_color=blue,
-                                      values=(weeks),state="readonly")
+                                      values=(weeks),state="readonly",command=set_default_week)
 week_combo.place(x=440,y=10)
 search_label=ctk.CTkLabel(root,text="")
 search_label.place(x=376,y=46)
@@ -1325,8 +1867,10 @@ submit_button=ctk.CTkButton(lnr_tree_w_frame,text="Submit",width=80
 submit_button.grid(row=1,columnspan=3,column=3)
 submit_button.grid(row=2,column=1)
 #calling functions
+retrieve_week()
 display_learners()
 #bindings
 root.bind("<Button-1>",placer)
 root.bind("<Button-3>",binding)
+# week_combo.bind("<<ComboboxSelected>>",set_default_week)
 root.mainloop()
