@@ -1,3 +1,4 @@
+from cProfile import label
 from tkinter import*
 from tkinter import ttk
 from tkinter import messagebox
@@ -52,75 +53,235 @@ blue="#4582EC"
 
 
 #FUNCTIONS
-def tr_attendance_func(e=None):
-    global tr_attend_tree, tr_attend_search_entry, tr_attend_disp_label, tr_attend_win
-    tr_attend_win = CTkToplevel(root)
-    tr_attend_win.geometry("800x350+100+100")
-    tr_attend_win.title("Teacher Attendance History")
-    # style
-    # fee collection treeview
-    tr_attend_frame = ctk.CTkFrame(tr_attend_win,fg_color="transparent")
-    tr_attend_tree_scroll = Scrollbar(tr_attend_frame, orient=VERTICAL)
-    tr_attend_tree_scroll.pack(side=RIGHT, fill=Y)
-    tr_attend_frame.pack()
-    tr_attend_tree = ttk.Treeview(tr_attend_frame, yscrollcommand=tr_attend_tree_scroll.set, height=12)
-    tr_attend_tree_scroll.configure(command=tr_attend_tree.yview)
-    tr_attend_win.resizable(width=False,height=False)
-    tr_attend_win.transient(root)
-    tr_attend_win.grab_set()
-    tr_attend_win.title("Monitor Tr. Attendance")
-    tr_attend_tree.after(100, lambda: tr_attend_tree.lift())  # Delay lifting the window
-    tr_attend_tree.after(200, lambda: tr_attend_tree.focus_force())  # Delay forcing
-    # defining columns
-    tr_attend_tree["columns"] = ('s/no', 'name', 'grade', 'subject', 'token', 'session', 'week', 'date')
-    tr_attend_tree.column("#0", width=0, stretch=NO)
-    tr_attend_tree.column("s/no", width=40, anchor="center", minwidth=35)
-    tr_attend_tree.column("name", width=150, minwidth=150, anchor=W)
-    tr_attend_tree.column("grade", width=80, minwidth=75, anchor=CENTER)
-    tr_attend_tree.column("subject", width=60, minwidth=50, anchor=CENTER)
-    tr_attend_tree.column("token", width=70, minwidth=50, anchor=CENTER)
-    tr_attend_tree.column("session", width=100, minwidth=90, anchor=W)
-    tr_attend_tree.column("week", width=150, minwidth=150, anchor=CENTER)
-    tr_attend_tree.column("date", width=150, minwidth=150, anchor=W)
-    # headings
-    tr_attend_tree.heading("#0", text="")
-    tr_attend_tree.heading("s/no", text="#", anchor=CENTER)
-    tr_attend_tree.heading("name", text="NAME", anchor=CENTER)
-    tr_attend_tree.heading("grade", text="GRADE", anchor=CENTER)
-    tr_attend_tree.heading("subject", text="SUBJ", anchor=CENTER)
-    tr_attend_tree.heading("token", text="TOKEN", anchor=CENTER)
-    tr_attend_tree.heading("session", text="SESSION", anchor=CENTER)
-    tr_attend_tree.heading("week", text="WEEK", anchor=CENTER)
-    tr_attend_tree.heading("date", text="DATE", anchor=CENTER)
-    # fee collection frame display
-    tr_attend_tree.pack(fill=BOTH, expand=True, pady=50)
-    # widget camera
-    # search2
-    # tr_attend_search_button=Button(tr_attend_win,text="Search",font="times 11",command=lambda: disp_attendance_history(None))
-    tr_attend_search_button = ctk.CTkButton(tr_attend_win, text="Search", command=disp_attendance_history,width=10)
-    # tr_attend_search_button.place(x=30,y=340)
-    tr_attend_search_button.place(x=190, y=10)
-    tr_attend_search_entry = ctk.CTkEntry(tr_attend_win, width=80,border_color=blue,
-                                          placeholder_text="Tr ID")
-    # tr_attend_search_entry.place(x=90,y=340)
-    tr_attend_search_entry.place(x=100, y=10)
+#delete teacher attendant archive
+def delete_teacher_attendance():
+    global tr_attend_archive_tree, tr_attend_archive_search_entry, tr_attend_archive_disp_label, tr_attend_archive_win
+    selected_records = tr_attend_archive_tree.selection()
 
-    # button to delete teacher attendance per id
-    # tr_attend_delete_button = Button(tr_attend_win, text="Delete", font="times 11", command=delete_attend_record)
-    # tr_attend_delete_button.place(x=30, y=380)
-    # display what should be searched
-    # display_label2
-    tr_attend_disp_label = ctk.CTkLabel(tr_attend_win, font=("Helvetica",12),text="")
-    tr_attend_disp_label.place(x=250, y=10)
-    # attempt to display all available records
-    cur.execute("""SELECT t.first,t.second, a.grade,a.session,
-            a.record_date,w.selected_week,a.session_amount,a.subject
-            FROM teacher_attendance a JOIN teacher t ON t.teacher_id=a.teacher_id
-            JOIN week_number w ON w.week_number_id=a.week_number_id JOIN term tm
-            ON a.term_id=tm.term_id
-            WHERE a.term_id=(SELECT term_id FROM term WHERE is_active=1)""")
+    if not selected_records:
+        messagebox.showwarning("Remedial App", "Select records before attempting to delete.")
+        return
+
+    root.bell()
+    resp = messagebox.askyesno("Remedial App",
+                               "Are you sure you want to delete the selected TEACHER ATTENDANCE records permanently?")
+
+    if resp:
+        teacher_ids = []
+        for item in selected_records:
+            values = tr_attend_archive_tree.item(item, "values")
+            teacher_ids.append((values[1],))  # Assuming teacher_id is at index 1
+
+            # Delete from treeview
+            tr_attend_archive_tree.delete(item)
+
+        # Execute delete operation
+        cur.executemany("DELETE FROM teacher_attendance_archive WHERE teacher_id = %s", teacher_ids)
+        my_db.commit()
+
+
+        # Execute delete operation if teacher IDs exist
+        if teacher_ids:
+            cur.executemany("DELETE FROM teacher_attendance_archive WHERE teacher_id = %s", teacher_ids)
+            my_db.commit()
+            messagebox.showinfo("Remedial App", "Records deleted successfully.")
+        tr_attend_archive_win.destroy()
+        disp_attend_archive_func()
+
+def disp_attend_archive_func():
+    global tr_attend_archive_tree, tr_attend_archive_search_entry, tr_attend_archive_disp_label, tr_attend_archive_win
+    cur.execute("""SELECT t.teacher_id, t.title, t.first,t.second,t.surname, ar.grade,ar.session,
+                ar.record_date,w.selected_week,ar.session_amount,ar.subject
+                FROM teacher_attendance_archive ar JOIN teacher t ON t.teacher_id=ar.teacher_id
+                JOIN week_number w ON w.week_number_id=ar.week_number_id JOIN term tm
+                ON ar.term_id=tm.term_id
+                WHERE  ar.term_id=(SELECT term_id FROM term WHERE is_active=1)""")
+    # ID-0,name-(1-4),grade-5,subject-10,token-9,session-6,week-8,date-7
     items = cur.fetchall()
     if items:
+        tr_attend_archive_win = CTkToplevel(root)
+        tr_attend_archive_win.geometry("870x400+390+10")
+        tr_attend_archive_win.title("Teacher Attendance History")
+        # style
+        tr_attend_archive_win.resizable(width=False,height=False)
+        tr_attend_archive_win.transient(root)
+        tr_attend_archive_win.grab_set()
+        tr_attend_archive_win.title("Tr. Attendance Archive")
+        tr_attend_archive_win.after(100, lambda: tr_attend_archive_win.lift())  # Delay lifting the window
+        tr_attend_archive_win.after(200, lambda: tr_attend_archive_win.focus_force())  # Delay forcing
+        # defining columns
+        # fee collection treeview
+        tr_attend_archive_frame = ctk.CTkFrame(tr_attend_archive_win, fg_color="transparent")
+        tr_attend_archive_tree_scroll = Scrollbar(tr_attend_archive_frame, orient=VERTICAL)
+        tr_attend_archive_tree_scroll.pack(side=RIGHT, fill=Y)
+        tr_attend_archive_frame.place(x=20, y=50)
+        tr_attend_archive_tree = ttk.Treeview(tr_attend_archive_frame, yscrollcommand=tr_attend_archive_tree_scroll.set, height=12)
+        tr_attend_archive_tree_scroll.configure(command=tr_attend_archive_tree.yview)
+        tr_attend_archive_tree["columns"] = ('s/no','ID', 'name', 'grade', 'subject', 'token', 'session', 'week', 'date')
+        tr_attend_archive_tree.column("#0", width=0, stretch=NO)
+        tr_attend_archive_tree.column("s/no", width=45, anchor="center", minwidth=30)
+        tr_attend_archive_tree.column("ID", width=45, anchor="center", minwidth=30)
+        tr_attend_archive_tree.column("name", width=150, minwidth=150, anchor=W)
+        tr_attend_archive_tree.column("grade", width=80, minwidth=75, anchor=CENTER)
+        tr_attend_archive_tree.column("subject", width=60, minwidth=50, anchor=CENTER)
+        tr_attend_archive_tree.column("token", width=70, minwidth=50, anchor=CENTER)
+        tr_attend_archive_tree.column("session", width=100, minwidth=90, anchor=W)
+        tr_attend_archive_tree.column("week", width=150, minwidth=150, anchor=CENTER)
+        tr_attend_archive_tree.column("date", width=120, minwidth=120, anchor=W)
+        # headings
+        tr_attend_archive_tree.heading("#0", text="")
+        tr_attend_archive_tree.heading("s/no", text="#", anchor=CENTER)
+        tr_attend_archive_tree.heading("ID", text="ID", anchor=CENTER)
+        tr_attend_archive_tree.heading("name", text="NAME", anchor=CENTER)
+        tr_attend_archive_tree.heading("grade", text="GRADE", anchor=CENTER)
+        tr_attend_archive_tree.heading("subject", text="SUBJ", anchor=CENTER)
+        tr_attend_archive_tree.heading("token", text="TOKEN", anchor=CENTER)
+        tr_attend_archive_tree.heading("session", text="SESSION", anchor=CENTER)
+        tr_attend_archive_tree.heading("week", text="WEEK", anchor=CENTER)
+        tr_attend_archive_tree.heading("date", text="DATE", anchor=CENTER)
+        # fee collection frame display
+        tr_attend_archive_tree.pack(fill=BOTH, expand=True)
+        # widgets frame
+        widgets_frame = ctk.CTkFrame(tr_attend_archive_win, fg_color="transparent")
+        widgets_frame.place(x=20, y=10)
+        # search2
+        # tr_attend_archive_search_button=Button(tr_attend_archive_win,text="Search",font="times 11",command=lambda: disp_attendance_history(None))
+        tr_attend_archive_search_button = ctk.CTkButton(widgets_frame, text="Search", command=search_teacher_attend_archive, width=10)
+        tr_attend_archive_search_button.grid(row=0, column=1)
+        tr_attend_archive_search_entry = ctk.CTkEntry(widgets_frame, width=80, border_color=blue, placeholder_text="Tr ID")
+
+        # tr_attend_archive_search_entry.place(x=100, y=10)
+        tr_attend_archive_search_entry.grid(row=0, column=0, padx=5)
+        tr_attend_archive_disp_label = ctk.CTkLabel(widgets_frame, font=("Helvetica", 12), text="")
+        # tr_attend_archive_disp_label.place(x=250, y=10)
+        tr_attend_archive_disp_label.grid(row=0, column=3, padx=10)
+        tr_archive_delete_button=ctk.CTkButton(tr_attend_archive_win,text="Delete Records",command=delete_teacher_attendance)
+        tr_archive_delete_button.place(x=30,y=330)
+
+        for index, items in enumerate(items, start=1):
+            time = items[7]
+            formatted_time = time.strftime("%d-%m-%Y")
+            # ID-0,name-(1-4),grade-5,subject-10,token-9,session-6,week-8,date-7
+
+            full_name = f"{items[1]} {items[2]} {items[3]}".title()
+            tr_attend_archive_tree.insert("", END, values=(
+                index,items[0] ,full_name, items[5], items[10], items[9], items[6], items[8], formatted_time))
+    else:
+        messagebox.showinfo("Remedial App","No teacher attendance record found")
+def search_teacher_attend_archive():
+    global tr_attend_archive_tree, tr_attend_archive_search_entry, tr_attend_archive_disp_label, tr_attend_archive_win
+    tr_attend_archive_tree.delete(*tr_attend_archive_tree.get_children())
+    try:
+        teacher_id = tr_attend_archive_search_entry.get()
+        teacher_id = int(teacher_id)
+        if not teacher_id:
+            tr_attend_archive_disp_label.configure(text="Search box cannot be blank")
+            tr_attend_archive_disp_label.after(4000, lambda: tr_attend_archive_disp_label.configure(text=""))
+            return
+        # displaying teacher attendance
+        cur.execute("""SELECT t.first,t.second, ar.grade,ar.session,
+            ar.record_date,w.selected_week,ar.session_amount,ar.subject
+            FROM teacher_attendance_archive ar JOIN teacher t ON t.teacher_id=ar.teacher_id
+            JOIN week_number w ON w.week_number_id=ar.week_number_id JOIN term tm
+            ON ar.term_id=tm.term_id
+            WHERE ar.teacher_id=%s AND ar.term_id=(SELECT term_id FROM term WHERE is_active=1)""", (teacher_id,))
+        items = cur.fetchall()
+        if items:
+            for index, items in enumerate(items, start=1):
+                time = items[4]
+                formatted_time = time.strftime("%d-%m-%Y")
+
+                full_name = f"{items[0]} {items[1]}".title()
+                tr_attend_archive_tree.insert("", END, values=(
+                index, full_name, items[2], items[7], items[6], items[3], items[5], formatted_time))
+            cur.execute("""SELECT SUM(session_amount) FROM teacher_attendance_archive
+                        WHERE teacher_id=%s""", (teacher_id,))
+            am = cur.fetchone()
+            if am:
+                amount_paid = am[0]
+                tr_attend_archive_disp_label.configure(text=f"Total Paid= {amount_paid}", font=("times",14 ))
+                tr_attend_archive_disp_label.after(4000,lambda:tr_attend_archive_disp_label.configure(text=""))
+
+        else:
+            tr_attend_archive_disp_label.configure(text=f"Record with Tr.No {tr_attend_archive_search_entry.get()} not found")
+            tr_attend_archive_disp_label.after(4000, lambda: tr_attend_archive_disp_label.configure(text=""))
+            tr_attend_archive_search_entry.delete(0, END)
+    except Exception as ex:
+        # tr_attend_archive_disp_label.configure(text=f"{ex}")
+        # tr_attend_archive_disp_label.after(4000, lambda: tr_attend_archive_disp_label.configure(text=""))
+        messagebox.showerror("Remedial App",f"{ex}")
+def tr_attendance_func(e=None):
+    global tr_attend_tree, tr_attend_search_entry, tr_attend_disp_label, tr_attend_win
+    cur.execute("""SELECT t.first,t.second, a.grade,a.session,
+               a.record_date,w.selected_week,a.session_amount,a.subject
+               FROM teacher_attendance a JOIN teacher t ON t.teacher_id=a.teacher_id
+               JOIN week_number w ON w.week_number_id=a.week_number_id JOIN term tm
+               ON a.term_id=tm.term_id
+               WHERE a.term_id=(SELECT term_id FROM term WHERE is_active=1)""")
+    items = cur.fetchall()
+    if items:
+        tr_attend_win = CTkToplevel(root)
+        tr_attend_win.geometry("810x350+390+10")
+        tr_attend_win.title("Teacher Attendance History")
+        # style
+        # tr_attend_win.resizable(width=False,height=False)
+        tr_attend_win.transient(root)
+        tr_attend_win.grab_set()
+        tr_attend_win.title("Monitor Tr. Attendance")
+        tr_attend_win.after(100, lambda: tr_attend_tree.lift())  # Delay lifting the window
+        tr_attend_win.after(200, lambda: tr_attend_tree.focus_force())  # Delay forcing
+        # defining columns
+        # fee collection treeview
+        tr_attend_frame = ctk.CTkFrame(tr_attend_win, fg_color="transparent")
+        tr_attend_tree_scroll = Scrollbar(tr_attend_frame, orient=VERTICAL)
+        tr_attend_tree_scroll.pack(side=RIGHT, fill=Y)
+        tr_attend_frame.place(x=20, y=50)
+        tr_attend_tree = ttk.Treeview(tr_attend_frame, yscrollcommand=tr_attend_tree_scroll.set, height=12)
+        tr_attend_tree_scroll.configure(command=tr_attend_tree.yview)
+        tr_attend_tree["columns"] = ('s/no', 'name', 'grade', 'subject', 'token', 'session', 'week', 'date')
+        tr_attend_tree.column("#0", width=0, stretch=NO)
+        tr_attend_tree.column("s/no", width=40, anchor="center", minwidth=35)
+        tr_attend_tree.column("name", width=150, minwidth=150, anchor=W)
+        tr_attend_tree.column("grade", width=80, minwidth=75, anchor=CENTER)
+        tr_attend_tree.column("subject", width=60, minwidth=50, anchor=CENTER)
+        tr_attend_tree.column("token", width=70, minwidth=50, anchor=CENTER)
+        tr_attend_tree.column("session", width=100, minwidth=90, anchor=W)
+        tr_attend_tree.column("week", width=150, minwidth=150, anchor=CENTER)
+        tr_attend_tree.column("date", width=120, minwidth=120, anchor=W)
+        # headings
+        tr_attend_tree.heading("#0", text="")
+        tr_attend_tree.heading("s/no", text="#", anchor=CENTER)
+        tr_attend_tree.heading("name", text="NAME", anchor=CENTER)
+        tr_attend_tree.heading("grade", text="GRADE", anchor=CENTER)
+        tr_attend_tree.heading("subject", text="SUBJ", anchor=CENTER)
+        tr_attend_tree.heading("token", text="TOKEN", anchor=CENTER)
+        tr_attend_tree.heading("session", text="SESSION", anchor=CENTER)
+        tr_attend_tree.heading("week", text="WEEK", anchor=CENTER)
+        tr_attend_tree.heading("date", text="DATE", anchor=CENTER)
+        # fee collection frame display
+        tr_attend_tree.pack(fill=BOTH, expand=True)
+        # widgets frame
+        widgets_frame=ctk.CTkFrame(tr_attend_win,fg_color="transparent")
+        widgets_frame.place(x=20,y=10)
+        # search2
+        # tr_attend_search_button=Button(tr_attend_win,text="Search",font="times 11",command=lambda: disp_attendance_history(None))
+        tr_attend_search_button = ctk.CTkButton( widgets_frame, text="Search", command=disp_attendance_history,width=10)
+        tr_attend_search_button.grid(row=0,column=1)
+        tr_attend_search_entry = ctk.CTkEntry( widgets_frame, width=80,border_color=blue,
+                                              placeholder_text="Tr ID")
+
+        # tr_attend_search_entry.place(x=100, y=10)
+        tr_attend_search_entry.grid(row=0,column=0,padx=5)
+        # button to delete teacher attendance per id
+        # tr_attend_delete_button = Button(tr_attend_win, text="Delete", font="times 11", command=delete_attend_record)
+        # tr_attend_delete_button.place(x=30, y=380)
+        # display what should be searched
+        # display_label2
+        tr_attend_disp_label = ctk.CTkLabel( widgets_frame, font=("Helvetica",12),text="")
+        # tr_attend_disp_label.place(x=250, y=10)
+        tr_attend_disp_label.grid(row=0,column=3,padx=10)
+        # attempt to display all available records
+
         for index, items in enumerate(items, start=1):
             time = items[4]
             formatted_time = time.strftime("%d-%m-%Y")
@@ -131,7 +292,7 @@ def tr_attendance_func(e=None):
 
     else:
         messagebox.showinfo("Transaction history", "No Teacher Attendance Records")
-        tr_attend_win.destroy()
+        # tr_attend_win.destroy()
 
 
 def disp_attendance_history():
@@ -380,7 +541,7 @@ def track_teacher_attendance():
         if session in ["Morning", "Evening"]:
             cur.execute("""SELECT weekday FROM termly_pay""")
         elif session == "Saturday":
-            cur.execute("""SELECT weekend FROM termly_pay WHERE""")
+            cur.execute("""SELECT weekend FROM termly_pay """)
         else:
             messagebox.showerror("Remedial App", "Invalid session type selected.")
             return
@@ -905,48 +1066,8 @@ def disable_combo(e):
         if person_type_combo.get()=="Teacher":
             tr_title_combo.configure(state=NORMAL)
             reg_grade_combo.configure(state=DISABLED)
-    
-# #display learners
-# def display_teachers():
-#     global teacher_tree
-#     #retrieving learners from database
-#     cur.execute("""SELECT teacher_id,title,first,second,surname FROM teacher""")
-#     teacher=cur.fetchall()
-#     if teacher:
-#         for index,teacher in enumerate (teacher,start=1):
-#             teacher_tree.insert("",END,values=(index,teacher[0],f"{teacher[1].title() } {teacher[2].title()} {teacher[3].title()} {teacher[4].title()}"))
-#     else:
-#         messagebox.showinfo("Remedial App","No records for teachers")
-# def display_teachers():
-#     global teacher_tree
-#     try:
-#         # Clear the tree before inserting new data
-#         teacher_tree.delete(*teacher_tree.get_children())
-#
-#         # Retrieve teacher details along with the token paid amount
-#         cur.execute("""
-#             SELECT t.teacher_id, t.title, t.first, t.second, t.surname,
-#                    IFNULL(SUM(tt.token_paid), 0) AS total_paid
-#             FROM teacher t
-#             LEFT JOIN teacher_token tt ON t.teacher_id = tt.teacher_id
-#             GROUP BY t.teacher_id
-#         """)
-#         teachers = cur.fetchall()
-#
-#         if teachers:
-#             for index, teacher in enumerate(teachers, start=1):
-#                 teacher_id, title, first, second, surname, total_paid = teacher
-#
-#                 # Insert teacher details into the Treeview with numbering and token paid amount
-#                 teacher_tree.insert(
-#                     "", "end",
-#                     values=(index, teacher_id, f"{title.title()} {first.title()} {second.title()} {surname.title()}",
-#                             total_paid)
-#                 )
-#         else:
-#             messagebox.showinfo("Remedial App", "No records for teachers")
-#     except Exception as e:
-#         messagebox.showerror("Remedial App", f"Error: {e}")
+
+
 def display_teachers():
     global teacher_tree
     try:
@@ -956,11 +1077,9 @@ def display_teachers():
         # Retrieve teacher details along with the token paid amount and total amount owed
         cur.execute("""
             SELECT t.teacher_id, t.title, t.first, t.second, t.surname, 
-                   IFNULL(SUM(tt.token_paid), 0) AS total_paid,
-                   IFNULL(SUM(ta.session_amount), 0) AS total_owed
+                IFNULL((SELECT SUM(tt.token_paid) FROM teacher_token tt WHERE tt.teacher_id = t.teacher_id), 0) AS total_paid,
+                IFNULL((SELECT SUM(ta.session_amount) FROM teacher_attendance ta WHERE ta.teacher_id = t.teacher_id), 0) AS total_owed
             FROM teacher t
-            LEFT JOIN teacher_token tt ON t.teacher_id = tt.teacher_id
-            LEFT JOIN teacher_attendance ta ON t.teacher_id = ta.teacher_id
             GROUP BY t.teacher_id
         """)
         teachers = cur.fetchall()
@@ -982,7 +1101,6 @@ def display_teachers():
             messagebox.showinfo("Remedial App", "No records for teachers")
     except Exception as e:
         messagebox.showerror("Remedial App", f"Error: {e}")
-
 
 def display_learners(e=None):
     try:
@@ -1009,6 +1127,7 @@ def display_learners(e=None):
                 ON learner.learner_id = transactions.learner_id 
                 AND transactions.term_id = (SELECT term_id FROM term WHERE is_active = 1)
             GROUP BY learner.learner_id
+            ORDER BY amount_paid DESC
             """, (lnr_pay,))
         else:
             cur.execute("""
@@ -1026,6 +1145,7 @@ def display_learners(e=None):
                 AND t.term_id = (SELECT term_id FROM term WHERE is_active = 1)
             WHERE l.grade = %s
             GROUP BY l.learner_id
+            ORDER BY amount_paid DESC
             """, (lnr_pay, selected_option))
 
         learners = cur.fetchall()
@@ -1324,18 +1444,18 @@ def payment_history_func():
 
     # Create the window only if there are records
     pay_hist_win = ctk.CTkToplevel(root)
-    pay_hist_win.geometry("830x400+50+10")
+    pay_hist_win.geometry("810x400+400+10")
     pay_hist_win.resizable(width=False, height=False)
     pay_hist_win.transient(root)
     pay_hist_win.grab_set()
-    pay_hist_win.title("Monitor Tr. Attendance")
+    pay_hist_win.title("Learner payment History")
     pay_hist_win.after(100, lambda: pay_hist_win.lift())  # Delay lifting the window
     pay_hist_win.after(200, lambda: pay_hist_win.focus_force())  # Delay forcing focus
 
     pay_hist_tree_frame = ctk.CTkFrame(pay_hist_win)
     pay_hist_tree_scroll = Scrollbar(pay_hist_tree_frame, orient=VERTICAL)
     pay_hist_tree_scroll.pack(side=RIGHT, fill=Y)
-    pay_hist_tree_frame.place(x=20, y=30)
+    pay_hist_tree_frame.place(x=20, y=50)
 
     pay_hist_tree = ttk.Treeview(pay_hist_tree_frame, yscrollcommand=pay_hist_tree_scroll.set, height=12,
                                  selectmode="extended")
@@ -1349,7 +1469,7 @@ def payment_history_func():
     pay_hist_tree.column("paid", width=80, minwidth=75, anchor=CENTER)
     pay_hist_tree.column("balance", width=60, minwidth=75, anchor=CENTER)
     pay_hist_tree.column("date", width=100, minwidth=45, anchor=CENTER)
-    pay_hist_tree.column("comment", width=200, minwidth=150, anchor=W)
+    pay_hist_tree.column("comment", width=180, minwidth=150, anchor=W)
 
     # Headings
     pay_hist_tree.heading("#0", text="")
@@ -1371,7 +1491,7 @@ def payment_history_func():
                                               record[5], record[6], formatted_date, record[8]))
 
     pay_hist_w_frame = ctk.CTkFrame(pay_hist_win,fg_color="transparent")
-    pay_hist_w_frame.place(x=150, y=315)
+    pay_hist_w_frame.place(x=20, y=10)
     search_hist_entry = ctk.CTkEntry(pay_hist_w_frame, font=("Helvetica", 16), width=100,
                                      border_color=blue, placeholder_text="Enter Adm")
     search_hist_entry.grid(row=0, column=0, sticky=W)
@@ -1385,7 +1505,7 @@ def payment_history_func():
 def teacher_win_func():
     global teacher_tree,session_combo,grade_combo,subject_combo,pay_token_entry,tr_win_disp
     teacher_win=ctk.CTkToplevel(root)
-    teacher_win.geometry("600x500+600+10")
+    teacher_win.geometry("600x500+400+10")
     teacher_win.resizable(width=False,height=False)
     teacher_win.transient(root)
     teacher_win.grab_set()
@@ -1447,7 +1567,10 @@ def teacher_win_func():
     #menu
     attend_hist_menu=tb.Menu(teacher_win)
     teacher_win.configure(menu=attend_hist_menu)
-    attend_hist_menu.add_command(label="History",command=tr_attendance_func)
+    file_menu=Menu(attend_hist_menu)
+    attend_hist_menu.add_cascade(menu=file_menu,label="Records")
+    file_menu.add_command(label="History",command=tr_attendance_func)
+    file_menu.add_command(label="Archives", command=disp_attend_archive_func)
     display_teachers()
 #setting term(term/year,termly pay teacher pay,promoting learnes)
 def set_term_func():
@@ -1458,7 +1581,7 @@ def set_term_func():
     set_term_win=ctk.CTkToplevel(root)
     path="D:/Tonniegifted/Remedial App/Resources/remedial convert.ico"
     set_term_win.iconbitmap(path)
-    set_term_win.geometry("320x350+800+10")
+    set_term_win.geometry("320x350+400+10")
     set_term_win.resizable(width=False,height=False)
     set_term_win.transient(root)
     set_term_win.grab_set()
@@ -1527,7 +1650,7 @@ def set_term_func():
 def add_person_func():
     global person_type_combo,number_entry,reg_grade_combo,tr_title_combo,first_entry,second_entry,surname_entry,reg_person_label
     person_win=ctk.CTkToplevel(root)
-    person_win.geometry("350x430+800+10")
+    person_win.geometry("350x430+400+10")
     person_win.title("Learners Registration")
     person_win.resizable(width=False,height=False)
     person_win.transient(root)
@@ -1552,7 +1675,7 @@ def add_person_func():
     #accessing values from the function
     grade=grades_list()
     reg_grade_combo=ctk.CTkComboBox(person_win,height=30,border_color=blue,width=180,
-                                font=("helvetica",16),state="readonly",values=grade,
+                                font=("helvetica",16),state="readonly",values=("Seven","Eight","Nine"),
                                 button_color=blue)
     reg_grade_combo.place(x=125,y=90)
     tr_title_label=ctk.CTkLabel(person_win,text="Title",font=("helvetica",16))
@@ -1591,27 +1714,6 @@ def add_person_func():
     reg_person_label.place(x=60,y=340)
 
 
-# def switch_term(e=None):
-#     global term_combo
-#     selected_term = term_combo.get()
-#     # Deactivate all terms
-#     cur.execute("UPDATE term SET is_active = 0 WHERE is_active = 1")
-#     my_db.commit()
-#
-#     # Activate the selected term
-#     cur.execute("UPDATE term SET is_active = 1 WHERE selected_term = %s", (selected_term,))
-#     my_db.commit()
-#     # Update the label to indicate the active term
-#     set_term_label.configure(text=f"{selected_term}: Active")
-#     set_term_label.after(4000, lambda: set_term_label.configure(text=""))
-#     #checking whether there is a termly_pay set for the term
-#     cur.execute("""SELECT COUNT(*) FROM termly_pay WHERE term_id=(
-#     SELECT term_id FROM term WHERE is_active=1)""")
-#     termly_pay=cur.fetchone()[0]
-#     if termly_pay==0:
-#         messagebox.showwarning("Set Term","No termly pay found for the current term")
-#     # Refresh the displayed learners
-#     display_learners()
 def switch_term(e=None):
     global term_combo
     selected_term = term_combo.get()
@@ -1658,24 +1760,7 @@ def set_default_term(e):
         tr_weekend_pay = float(tr_weekend_entry.get())  # Weekend pay
 
         if all([lnr_pay, tr_weekly_pay, tr_weekend_pay, selected]):
-            # Deactivate all terms
-            # cur.execute("UPDATE term SET is_active = 0 WHERE is_active = 1")
-            # my_db.commit()
 
-            # Activate the selected term
-            # cur.execute("UPDATE term SET is_active = 1 WHERE selected_term = %s", (selected,))
-            # my_db.commit()
-
-            # Retrieve the current active term
-            # cur.execute("SELECT term_id, selected_term FROM term WHERE is_active = 1")
-            # term = cur.fetchone()
-
-
-            # if term:  # Ensure term is not None
-            #     term_id = term[0]
-            #     term_name = term[1]
-
-                # Updating teacher pay
             # Ensure only one record exists by deleting the previous one
             cur.execute("DELETE FROM termly_pay")
 
@@ -1787,15 +1872,25 @@ menubutton=tb.Menubutton(root,text="Menu")
 menubutton.place(x=30,y=10) 
 menu=tb.Menu(menubutton)
 menubutton["menu"]=menu 
-
-menu.add_command(label="Set Term",command=set_term_func)
-menu.add_separator()
-menu.add_command(label="Register Persons",command=add_person_func)
-menu.add_separator()
+admin_menu=tb.Menu(menu)
+menu.add_cascade(menu=admin_menu,label="Admin")
+admin_menu.add_command(label="Set Term",command=set_term_func)
+admin_menu.add_separator()
+file_menu=tb.Menu(menu)
+menu.add_cascade(menu=file_menu,label="Files")
+file_menu.add_command(label="Archived Learners")
+gen_menu=tb.Menu(file_menu)
+file_menu.add_cascade(menu=gen_menu,label="Generate files")
+gen_menu.add_command(label="Remedial file-xlsx")
+gen_menu.add_command(label="Class Lists -xlsx")
+admin_menu.add_command(label="Register Persons",command=add_person_func)
 menu.add_command(label="Learner Payment History",command=payment_history_func)
 menu.add_separator()
 # menu.add_command(label=" Display Tr. Attnd. History") #on the monitor table
 menu.add_command(label="Monitor Tr. Attendance",command=teacher_win_func)
+# menu.add_separator()
+# menu.add_command(label="Attendance Archive", command=disp_attend_archive_func)
+
 #within the table display teachers, their total_sessions, and total(already paid)
 #popup menu
 #popup func
@@ -1858,11 +1953,11 @@ disp_bal_combo=ctk.CTkComboBox(lnr_tree_w_frame,height=30,width=190,font=("Helve
 disp_bal_combo.set(grade[0])
 
 disp_bal_combo.grid(row=0,column=4)
-delete_trans_button=ctk.CTkButton(lnr_tree_w_frame,text="Delete Transaction",width=100
+delete_trans_button=ctk.CTkButton(lnr_tree_w_frame,text="Delete Pay",width=100
                             ,command=delete_transaction)
 delete_trans_button.grid(row=1,column=4)
 # disp_bal_combo.set("Display Balances")
-submit_button=ctk.CTkButton(lnr_tree_w_frame,text="Submit",width=80
+submit_button=ctk.CTkButton(lnr_tree_w_frame,text="Submit Pay",width=80
                             ,command=make_payment)
 submit_button.grid(row=1,columnspan=3,column=3)
 submit_button.grid(row=2,column=1)
