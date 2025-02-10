@@ -12,7 +12,12 @@ from decimal import Decimal
 import customtkinter as ctk
 from datetime import date
 import ttkbootstrap as tb
-#connecting to mysql
+import openpyxl
+from openpyxl.drawing.image import Image
+from openpyxl.styles import Alignment, Font, Border, Side
+from tkinter import filedialog, Tk
+from datetime import datetime
+import os
 #connecting to database
 my_db=mysql.connector.connect(host="localhost",
                               user="root",
@@ -21,6 +26,7 @@ my_db=mysql.connector.connect(host="localhost",
 
 # creating cursor
 cur=my_db.cursor()
+
 #creating connection for sqlite3    "C:/Users/Administrator/Documents"
 #"C:/Users/Administrator/Documents/Remedial App/Remedial App.db"
 
@@ -53,6 +59,375 @@ blue="#4582EC"
 
 
 #FUNCTIONS
+def generate_records(e=None):
+    generate_teacher_attendance_report()
+    generate_grade_reports()
+def generate_teacher_attendance_report():
+    try:
+        # Fetch school name
+        school_name_path = "C:/Users/Administrator/Documents/Remedial2/name.txt"
+        with open(school_name_path, "r") as file:
+            school_name = file.read().strip()
+
+        # Default save path
+        default_folder = "C:/Users/Administrator/Documents/Remedial2"
+        os.makedirs(default_folder, exist_ok=True)
+
+        # Ask user for folder selection, fallback to default
+        folder_path = filedialog.askdirectory(title="Select Save Location") or default_folder
+
+        file_path = os.path.join(folder_path, "Teacher_Attendance_Report.xlsx")
+
+        # Check if file exists
+        if os.path.exists(file_path):
+            replace = messagebox.askyesno(
+                "File Exists",
+                f"{file_path} already exists. Do you want to replace it?"
+            )
+            if not replace:
+                return  # Exit if the user doesn't want to replace the file
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Teacher Attendance Report"
+
+        # === Insert Logo at A2 ===
+        logo_path = "C:/Users/Administrator/Documents/Remedial2/LOGO FINALE.png"
+        try:
+            img = Image(logo_path)
+            img.anchor = "A2"  # Position logo
+            ws.add_image(img)
+        except Exception as e:
+            messagebox.showwarning("Warning", f"Could not load logo: {e}")
+
+        # === Add School Details at C2 ===
+        ws.merge_cells("C2:H2")
+        ws["C2"] = school_name
+        ws["C2"].font = Font(size=14, bold=True)
+        ws["C2"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws["C3"] = f"Date Generated: {datetime.today().strftime('%d-%m-%Y')}"
+        ws["C3"].font = Font(size=12, bold=True)
+        ws["C3"].alignment = Alignment(horizontal="left")
+
+        # === Table Headers ===
+        headers = ["S/No", "Name", "Grade", "Subject", "Token Amount", "Session", "Week", "Date"]
+        start_row = 9
+        start_col = 2
+
+        for col_index, header in enumerate(headers, start=start_col):
+            cell = ws.cell(row=start_row, column=col_index, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = Border(bottom=Side(style="thin"))
+
+        # === Fetch Data from MySQL ===
+        cur.execute("""
+            SELECT t.first, t.second, a.grade, a.session,
+                   a.record_date, w.selected_week, a.session_amount, a.subject
+            FROM teacher_attendance a
+            JOIN teacher t ON t.teacher_id = a.teacher_id
+            JOIN week_number w ON w.week_number_id = a.week_number_id
+            JOIN term tm ON a.term_id = tm.term_id
+            WHERE a.term_id = (SELECT term_id FROM term WHERE is_active = 1)
+        """)
+        items = cur.fetchall()
+
+        data_start_row = start_row + 1
+        if items:
+            for row_index, item in enumerate(items, start=1):
+                full_name = f"{item[0]} {item[1]}".title()
+                formatted_date = item[4].strftime("%d-%m-%Y")  # Format date
+
+                # Insert data into the worksheet
+                ws.cell(row=data_start_row + row_index - 1, column=start_col, value=row_index)  # Serial Number
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 1, value=full_name)  # Name
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 2, value=item[2])  # Grade
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 3, value=item[7])  # Subject
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 4, value=item[6])  # Token Amount
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 5, value=item[3])  # Session
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 6, value=item[5])  # Week
+                ws.cell(row=data_start_row + row_index - 1, column=start_col + 7, value=formatted_date)  # Date
+        else:
+            ws.cell(row=data_start_row, column=start_col, value="No records found.")
+
+        # === Adjust Column Width ===
+        ws.column_dimensions['C'].width = 15  # Name
+        ws.column_dimensions['D'].width = 10  # Grade
+        ws.column_dimensions['E'].width = 12  # Subject
+        ws.column_dimensions['F'].width = 12  # Token Amount
+        ws.column_dimensions['G'].width = 15  # Session
+        ws.column_dimensions['H'].width = 15  # Week
+        ws.column_dimensions['I'].width = 15  # Date
+
+        # === Ensure Grid Lines Are Printable ===
+        ws.print_options.gridLines = True
+
+        # === A4 Page Setup ===
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+
+        # Save the file
+        wb.save(file_path)
+
+        messagebox.showinfo("Success", "Teacher Attendance Report Generated Successfully!")
+
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred: {e}")
+
+
+
+
+def generate_grade_reports():
+    try:
+        # Fetch school name
+        school_name_path = "C:/Users/Administrator/Documents/Remedial2/name.txt"
+        with open(school_name_path, "r") as file:
+            school_name = file.read().strip()
+
+        # Fetch active term
+        cur.execute("SELECT selected_term FROM term WHERE is_active=1")
+        term_data = cur.fetchone()
+        if not term_data:
+            messagebox.showerror("Error", "No active term found in the database.")
+            return
+        
+        term = term_data[0]
+
+        # Default save path
+        default_folder = "C:/Users/Administrator/Documents/Remedial2"
+        os.makedirs(default_folder, exist_ok=True)
+
+        # Ask user for folder selection, fallback to default
+        folder_path = filedialog.askdirectory(title="Select Save Location") or default_folder
+
+        grades = ["Seven", "Eight", "Nine"]
+
+        for grade in grades:
+            file_path = os.path.join(folder_path, f"Grade_{grade}_Balance.xlsx")
+
+            # Check if file exists
+            if os.path.exists(file_path):
+                replace = messagebox.askyesno(
+                    "File Exists",
+                    f"{file_path} already exists. Do you want to replace it?"
+                )
+                if not replace:
+                    continue  # Skip this grade and move to the next
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = f"Grade {grade} Report"
+
+            # === Insert Logo at A2 ===
+            logo_path = "C:/Users/Administrator/Documents/Remedial2/LOGO FINALE.png"
+            try:
+                img = Image(logo_path)
+                img.anchor = "A2"  # Position logo
+                ws.add_image(img)
+            except Exception as e:
+                messagebox.showwarning("Warning", f"Could not load logo for Grade {grade}: {e}")
+
+            # === Fetch Term Fee for the Grade from `termpay` ===
+            cur.execute("SELECT lnr_pay FROM termly_pay")
+            term_fee_result = cur.fetchone()
+            term_fee = term_fee_result[0] if term_fee_result else 0
+
+            # === Add School Details at C2 ===
+            ws.merge_cells("C2:H2")
+            ws["C2"] = school_name
+            ws["C2"].font = Font(size=14, bold=True)
+            ws["C2"].alignment = Alignment(horizontal="center", vertical="center")
+
+            ws["C3"] = f"Grade: {grade}"
+            ws["C4"] = f"{term}"
+            ws["C6"] = f"{datetime.today().strftime('%d-%m-%Y')}"
+
+            for cell in ["C3", "C4", "C6"]:
+                ws[cell].font = Font(size=12, bold=True)
+                ws[cell].alignment = Alignment(horizontal="right")
+
+            # === Table Headers ===
+            headers = ["#.", "Adm", "Name", "Paid", "Bal"]
+            start_row = 9
+            start_col = 2
+
+            for col_index, header in enumerate(headers, start=start_col):
+                cell = ws.cell(row=start_row, column=col_index, value=header)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = Border(bottom=Side(style="thin"))
+
+            # === Fetch Data from MySQL and Sort by Amount Paid (Desc) ===
+            cur.execute("""
+                SELECT 
+                    learner.learner_id, 
+                    CONCAT(learner.first, ' ', learner.second, ' ', learner.surname) AS full_name, 
+                    IFNULL(SUM(transactions.amount_paid), 0) AS amount_paid, 
+                    %s - IFNULL(SUM(transactions.amount_paid), 0) AS balance
+                FROM learner
+                LEFT JOIN transactions 
+                    ON learner.learner_id = transactions.learner_id 
+                    AND transactions.term_id = (SELECT term_id FROM term WHERE is_active = 1)
+                WHERE learner.grade = %s
+                GROUP BY learner.learner_id
+                ORDER BY amount_paid DESC, learner.surname ASC
+            """, (term_fee, grade))
+
+            learners = cur.fetchall()
+
+            data_start_row = start_row + 1
+            if learners:
+                for row_index, learner in enumerate(learners, start=1):
+                    ws.cell(row=data_start_row + row_index - 1, column=start_col, value=row_index)
+                    for col_index, value in enumerate(learner, start=start_col + 1):
+                        ws.cell(row=data_start_row + row_index - 1, column=col_index, value=value)
+            else:
+                ws.cell(row=data_start_row, column=start_col, value="No records found.")
+
+            # === Adjust Column Width ===
+            ws.column_dimensions['C'].width = 12  # Learner ID
+            ws.column_dimensions['D'].width = 25  # Full Name
+            ws.column_dimensions['E'].width = 15  # Amount Paid
+            ws.column_dimensions['F'].width = 15  # Balance
+
+            # === Ensure Grid Lines Are Printable ===
+            ws.print_options.gridLines = True
+
+            # === A4 Page Setup ===
+            ws.page_setup.paperSize = ws.PAPERSIZE_A4
+
+            # Save the file
+            wb.save(file_path)
+
+        messagebox.showinfo("Success", "All Grade Reports Generated Successfully!")
+
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred: {e}")
+
+
+
+def save_school_name():
+    global school_name_entry,school_name_disp_label
+    path="c:/Users/Administrator/Documents/Remedial2/name.txt"
+    name=school_name_entry.get().title().strip()
+    if name:
+        with open(f"{path}","w") as file:
+            file.write(f"{name}")
+            messagebox.showinfo("School Name",f"School Name '{name.title()}'\nsaved successfully")
+            school_name_entry.delete(0,END)
+            
+    else:
+        root.bell()
+        messagebox.showwarning("School Name","School Name cannot be blank")
+def school_name_func():
+    global school_name_entry,school_name_disp_label
+    school_name_win = CTkToplevel(root)
+    school_name_win.geometry("400x150+390+10")
+    # style
+    school_name_win.resizable(width=False,height=False)
+    school_name_win.transient(root)
+    school_name_win.grab_set()
+    school_name_win.title("School_name")
+    school_name_win.after(100, lambda: school_name_win.lift())  # Delay lifting the window
+    school_name_win.after(200, lambda: school_name_win.focus_force())  # Delay forcing
+    # lr_archive_frame=ctk.CTkFrame(school_name_win,fg_color="transparent")
+    widget_frame=ctk.CTkFrame(school_name_win,fg_color="transparent")
+    widget_frame.place(x=20,y=20)
+    school_name_label=ctk.CTkLabel(widget_frame,text="School Name",font=("helvetica",16))
+    school_name_label.grid(row=0,column=0,sticky=W)
+    school_name_entry=ctk.CTkEntry(widget_frame,font=("helvetica",16),width=250,border_color=blue)
+    school_name_entry.grid(row=0,column=1,padx=5)
+    school_name_button=ctk.CTkButton(widget_frame,text="Save",width=80,command=save_school_name)
+    school_name_button.grid(row=1,columnspan=2,pady=10)
+    school_name_disp_label=ctk.CTkLabel(widget_frame,text="",font=("helvetica",16))
+    school_name_disp_label.grid(row=2,column=0)
+def delete_archive():
+    global archive_label
+    resp=messagebox.askyesno("Archives","Are you sure you want to delete learner\narchive records?")
+    if resp:
+        cur.execute("DELETE FROM archive")
+        my_db.commit()
+        disp_label.configure("Remedial App","Learner Archive records Deleted\nsuccessfully")
+        # archive_function()
+        # display_archives()
+    else:
+        pass
+#
+def display_archives():
+    global lr_archive_win,archive_window
+    cur.execute("SELECT * FROM archive")
+    item=cur.fetchall()
+    if item:
+        lr_archive_win = CTkToplevel(root)
+        lr_archive_win.geometry("530x380+390+10")
+        # style
+        lr_archive_win.resizable(width=False,height=False)
+        lr_archive_win.transient(root)
+        lr_archive_win.grab_set()
+        lr_archive_win.title("Archived Learners")
+        lr_archive_win.after(100, lambda: lr_archive_win.lift())  # Delay lifting the window
+        lr_archive_win.after(200, lambda: lr_archive_win.focus_force())  # Delay forcing
+        lr_archive_frame=ctk.CTkFrame(lr_archive_win,fg_color="transparent")
+        archive_tree_scroll=Scrollbar(lr_archive_frame,orient=VERTICAL)
+        archive_tree_scroll.pack(side=RIGHT,fill=Y)
+        lr_archive_frame.place(x=20,y=30)
+        lr_archive_tree=ttk.Treeview(lr_archive_frame,yscrollcommand=archive_tree_scroll.set,height=12)
+        lr_archive_tree.pack()
+        archive_tree_scroll.configure(command=lr_archive_tree.yview)
+        #defining columns
+        lr_archive_tree["columns"]=('s/no','name','archived')
+        lr_archive_tree.column("#0",width=0,stretch=NO)
+        lr_archive_tree.column("s/no",width=40,anchor="center",minwidth=35)
+        lr_archive_tree.column("name",width=270,minwidth=180,anchor=W)
+        lr_archive_tree.column("archived",width=180,minwidth=180,anchor=W)
+        #headings
+        lr_archive_tree.heading("#0",text="")
+        lr_archive_tree.heading("s/no",text="#",anchor=CENTER)
+        lr_archive_tree.heading("name",text="NAME",anchor=CENTER)
+        lr_archive_tree.heading("archived",text="DATE ARCHIVED",anchor=CENTER)
+        # defining columns
+        # fee collection treeview
+        # lr_archive_tree = ctk.CTkFrame(lr_archive_win, fg_color="transparent")
+        widget_frame=ctk.CTkFrame(lr_archive_win,fg_color="transparent")
+        widget_frame.place(x=20,y=320)
+        archive_del_button=ctk.CTkButton(widget_frame,text="Delete",command=delete_archive)
+        archive_del_button.grid(row=0,column=0,sticky=W,padx=5)
+        archive_label=ctk.CTkLabel(widget_frame,text="")
+        archive_label.grid(row=0,column=1,)
+        for index,item in enumerate(item,start=1):
+            time=item[5]
+            formatted_time=time.strftime("%d/%m/%Y")
+            
+
+            full_name=f"{item[1]} {item[2]} {item[3]}".title()
+            lr_archive_tree.insert("",END,values=(index,full_name,formatted_time))
+    
+    else:
+        messagebox.showinfo("Archives","No records in Archives")
+       
+
+def delete_attend_record():
+    global tr_attend_tree,tr_attend_win
+    try:
+        res=messagebox.askyesno("Teacher Attendance History","Are you sure you want to delete\nThe last entered attendance record?")
+        if res:
+            # pos=tr_attend_tree.selection()
+            # value=tr_attend_tree.item(pos,"values")
+            # teacher_id=value[0]
+            cur.execute("""SELECT teacher_attendance_id FROM teacher_attendance ORDER BY
+                        record_date DESC LIMIT 1""")
+            tr_attend_id=cur.fetchone()[0]
+            # deleting last entered record by tr_id incase of a mistake
+        cur.execute("""DELETE FROM teacher_attendance WHERE teacher_attendance_id=%s""",
+                    (tr_attend_id,))
+        my_db.commit()
+    # tr_attend_tree.delete(value)
+        messagebox.showinfo("Teacher Attendance History","Recent teacher attendance record deleted\nsuccessfully")
+    except:
+        messagebox.showerror("Teacher Attendance History","Unexpected error just occurred")
+    # cur.execute("DELETE FROM teacher_attendance")
+    # finally:
+    #     tr_attend_win.destroy()
 #delete teacher attendant archive
 def delete_teacher_attendance():
     global tr_attend_archive_tree, tr_attend_archive_search_entry, tr_attend_archive_disp_label, tr_attend_archive_win
@@ -88,7 +463,7 @@ def delete_teacher_attendance():
         tr_attend_archive_win.destroy()
         disp_attend_archive_func()
 
-def disp_attend_archive_func():
+def disp_attend_archive_func(e=None):
     global tr_attend_archive_tree, tr_attend_archive_search_entry, tr_attend_archive_disp_label, tr_attend_archive_win
     cur.execute("""SELECT t.teacher_id, t.title, t.first,t.second,t.surname, ar.grade,ar.session,
                 ar.record_date,w.selected_week,ar.session_amount,ar.subject
@@ -155,7 +530,7 @@ def disp_attend_archive_func():
         tr_attend_archive_disp_label = ctk.CTkLabel(widgets_frame, font=("Helvetica", 12), text="")
         # tr_attend_archive_disp_label.place(x=250, y=10)
         tr_attend_archive_disp_label.grid(row=0, column=3, padx=10)
-        tr_archive_delete_button=ctk.CTkButton(tr_attend_archive_win,text="Delete Records",command=delete_teacher_attendance)
+        tr_archive_delete_button=ctk.CTkButton(tr_attend_archive_win,text="Delete",command=delete_teacher_attendance,width=80)
         tr_archive_delete_button.place(x=30,y=330)
 
         for index, items in enumerate(items, start=1):
@@ -210,6 +585,7 @@ def search_teacher_attend_archive():
         # tr_attend_archive_disp_label.configure(text=f"{ex}")
         # tr_attend_archive_disp_label.after(4000, lambda: tr_attend_archive_disp_label.configure(text=""))
         messagebox.showerror("Remedial App",f"{ex}")
+#sets the treeview for teacher attendance history
 def tr_attendance_func(e=None):
     global tr_attend_tree, tr_attend_search_entry, tr_attend_disp_label, tr_attend_win
     cur.execute("""SELECT t.first,t.second, a.grade,a.session,
@@ -221,7 +597,7 @@ def tr_attendance_func(e=None):
     items = cur.fetchall()
     if items:
         tr_attend_win = CTkToplevel(root)
-        tr_attend_win.geometry("810x350+390+10")
+        tr_attend_win.geometry("810x400+390+10")
         tr_attend_win.title("Teacher Attendance History")
         # style
         # tr_attend_win.resizable(width=False,height=False)
@@ -280,8 +656,9 @@ def tr_attendance_func(e=None):
         tr_attend_disp_label = ctk.CTkLabel( widgets_frame, font=("Helvetica",12),text="")
         # tr_attend_disp_label.place(x=250, y=10)
         tr_attend_disp_label.grid(row=0,column=3,padx=10)
-        # attempt to display all available records
-
+        tr_attend_delete_button=ctk.CTkButton(tr_attend_win,text="Delete",
+                                              command=delete_attend_record,width=80)
+        tr_attend_delete_button.place(x=40,y=330)
         for index, items in enumerate(items, start=1):
             time = items[4]
             formatted_time = time.strftime("%d-%m-%Y")
@@ -294,7 +671,7 @@ def tr_attendance_func(e=None):
         messagebox.showinfo("Transaction history", "No Teacher Attendance Records")
         # tr_attend_win.destroy()
 
-
+#displaying attendance history searches
 def disp_attendance_history():
     global tr_attend_tree, session_combo, grade_combo, subject_combo, pay_token_entry, tr_win_disp,tr_attend_search_entry,tr_attend_disp_label
 
@@ -302,19 +679,9 @@ def disp_attendance_history():
         # Ensure treeview is cleared before inserting new records
         teacher_id=int(tr_attend_search_entry.get())
         tr_attend_tree.delete(*tr_attend_tree.get_children())
-        # Ensure an item is selected
-        # pos = teacher_tree.selection()
-        # if not pos:
-        #     tr_attend_disp_label.configure(text="Please select a teacher from the list")
-        #     tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
-        #     return
-        #
-        # value = teacher_tree.item(pos, "values")
-        # teacher_id = value[1]
-
         # Query to get teacher attendance records
         cur.execute("""
-            SELECT t.first, t.second, a.grade, a.session, a.record_date, 
+            SELECT t.teacher_id,t.title,t.first, t.second, a.grade, a.session, a.record_date, 
                    w.selected_week, a.session_amount, a.subject
             FROM teacher_attendance a 
             JOIN teacher t ON t.teacher_id = a.teacher_id
@@ -349,8 +716,8 @@ def disp_attendance_history():
             if tr_attend_disp_label and tr_attend_disp_label.winfo_exists():
                 tr_attend_disp_label.configure(text=f"Balance = {balance}")
                 tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
-            else:
-                print("Warning: tr_win_disp is closed or does not exist.")
+            # else:
+            #     print("Warning: tr_win_disp is closed or does not exist.")
         else:
             tr_attend_disp_label.configure(text=f"Record with Tr.No {tr_attend_search_entry.get()} not found")
             tr_attend_disp_label.after(4000, lambda: tr_attend_disp_label.configure(text=""))
@@ -604,10 +971,6 @@ def track_teacher_attendance():
 
     except Exception as e:
         messagebox.showerror("Remedial App", f"Error: {e} Occurred")
-    finally:
-        grade_combo.set("")
-        session_combo.set("")
-        subject_combo.set("")
 
 #setting week one as default in each new term
 def week_one():
@@ -816,34 +1179,30 @@ def delete_learner():
                 pass
 
 # Treeview to display results
-def search_func(e=None):
-    search_term = learner_search_entry.get().strip().lower()  # Get and normalize the search term
-    search_by = search_by_combo.get()  # Get the search criteria (Adm No or Name)
-    selected_grade = disp_bal_combo.get().strip().lower()  # Get and normalize the selected grade
 
-    # Ensure the user selects a search criteria before proceeding
+def search_func(e=None):
+    search_term = learner_search_entry.get().strip().lower()
+    search_by = search_by_combo.get()
+    selected_grade = disp_bal_combo.get().strip().lower()
+
     if search_by == "Search By":
         messagebox.showinfo("Select Criteria", "Please select a search criteria before searching.")
         return
 
-    # Check if search entry is blank
     if not search_term:
         messagebox.showwarning("Input Error", "Search entry cannot be blank.")
         return
 
     try:
-        # Clear the treeview before inserting new results
         learner_tree.delete(*learner_tree.get_children())
 
         if search_by == "Adm No":
-            # Convert search_term to integer for Adm No search
             try:
                 search_term = int(search_term)
             except ValueError:
                 messagebox.showwarning("Input Error", "Admission Number must be a number.")
                 return
 
-            # Search by Admission Number (with or without grade filter)
             if selected_grade == "display all learners":
                 query = """
                 SELECT 
@@ -852,14 +1211,14 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
-                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay LIMIT 1) - 
+                             SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
                     AND t.term_id = (SELECT term_id FROM term WHERE is_active = 1)
                 WHERE l.learner_id = %s
-                GROUP BY l.learner_id
                 """
                 cur.execute(query, (search_term,))
             else:
@@ -870,18 +1229,17 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
-                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay LIMIT 1) - 
+                             SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
                     AND t.term_id = (SELECT term_id FROM term WHERE is_active = 1)
                 WHERE l.learner_id = %s AND LOWER(l.grade) = %s
-                GROUP BY l.learner_id
                 """
                 cur.execute(query, (search_term, selected_grade))
         else:
-            # Search by Name (with or without grade filter)
             if selected_grade == "display all learners":
                 query = """
                 SELECT 
@@ -890,16 +1248,16 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
-                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay LIMIT 1) - 
+                             SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
                     AND t.term_id = (SELECT term_id FROM term WHERE is_active = 1)
                 WHERE LOWER(l.first) LIKE %s OR LOWER(l.second) LIKE %s OR LOWER(l.surname) LIKE %s
-                GROUP BY l.learner_id
                 """
-                search_pattern = f"%{search_term}%"  # Wildcarded search term
+                search_pattern = f"%{search_term}%"
                 cur.execute(query, (search_pattern, search_pattern, search_pattern))
             else:
                 query = """
@@ -909,31 +1267,31 @@ def search_func(e=None):
                     l.first,
                     l.second,
                     l.surname,
-                    COALESCE(SUM(t.amount_paid), 0) AS amount_paid,
-                    COALESCE((SELECT lnr_pay FROM termly_pay WHERE term_id=(SELECT term_id FROM term WHERE is_active=1)) - SUM(t.amount_paid), 0) AS balance
+                    COALESCE(SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS amount_paid,
+                    COALESCE((SELECT lnr_pay FROM termly_pay LIMIT 1) - 
+                             SUM(t.amount_paid) OVER (PARTITION BY l.learner_id), 0) AS balance
                 FROM learner l
                 LEFT JOIN transactions t 
                     ON l.learner_id = t.learner_id 
                     AND t.term_id = (SELECT term_id FROM term WHERE is_active = 1)
-                WHERE (LOWER(l.first) LIKE %s OR LOWER(l.second) LIKE %s OR LOWER(l.surname) LIKE %s) AND LOWER(l.grade) = %s
-                GROUP BY l.learner_id
+                WHERE (LOWER(l.first) LIKE %s OR LOWER(l.second) LIKE %s OR LOWER(l.surname) LIKE %s) 
+                  AND LOWER(l.grade) = %s
                 """
-                search_pattern = f"%{search_term}%"  # Wildcarded search term
+                search_pattern = f"%{search_term}%"
                 cur.execute(query, (search_pattern, search_pattern, search_pattern, selected_grade))
 
-        results = cur.fetchall()  # Get all results
+        results = cur.fetchall()
 
         if results:
-            # Use enumerate with start=1 to display learner numbers
             for index, row in enumerate(results, start=1):
                 learner_tree.insert(
                     "",
                     "end",
                     values=(
-                        index,  # Learner number
+                        index,
                         row[0],  # Learner ID
                         row[1],  # Grade
-                        f"{row[2].title()} {row[3].title()} {row[4].title()}",  # Full Name
+                        f"{row[2].title()} {row[3].title()} {row[4].title()}",
                         row[5],  # Amount Paid
                         row[6]   # Balance
                     )
@@ -946,7 +1304,116 @@ def search_func(e=None):
     except Exception as e:
         messagebox.showerror("Database Error", f"An error occurred: {e}")
     finally:
-        learner_search_entry.delete(0,END)
+        learner_search_entry.delete(0, END)
+
+
+# def make_payment(e=None):
+#     try:
+#         # Select learner ID from the learner treeview
+#         pos = learner_tree.selection()
+#         adm = learner_tree.item(pos, "values")
+#         learner_id = adm[1]
+
+#         amount_paid = float(amount_entry.get())
+
+#         # Retrieve the current term's number
+#         cur.execute("SELECT term_number FROM term WHERE is_active = 1")
+#         term_no = cur.fetchone()
+#         if not term_no:
+#             messagebox.showwarning("Remedial App", "No active term found. Please check term setup.")
+#             return
+#         current_term_number = term_no[0]
+
+#         # Determine the previous term ID (if applicable)
+#         prev_term_id = None if current_term_number == 1 else cur.execute(
+#             "SELECT term_id FROM term WHERE term_number = %s", (current_term_number - 1,)
+#         ).fetchone()
+#         prev_term_id = prev_term_id[0] if prev_term_id else None
+
+#         # Check if learner has outstanding balance from the previous term
+#         if prev_term_id:
+#             cur.execute("SELECT amount_paid, balance FROM transactions WHERE learner_id = %s", (learner_id,))
+#             balance = cur.fetchone()
+#             prev_balance = balance[1] if balance else 0
+#             prev_amount_paid = balance[0] if balance else 0
+
+#             if prev_balance > 0 or prev_amount_paid == 0:
+#                 cur.execute("SELECT first, second, surname FROM learner WHERE learner_id = %s", (learner_id,))
+#                 name = cur.fetchone()
+#                 fullname = f"\n{name[0].title()} {name[1].title()} {name[2].title()}"
+#                 messagebox.showwarning(
+#                     "Remedial App",
+#                     f"{fullname} has not cleared\ntheir previous term fees. Amount paid so\nfar is: KSH {prev_amount_paid:.2f}."
+#                 )
+#                 return
+
+#         # Retrieve the termly fee (lnr_pay) for the learner's grade
+#         cur.execute("SELECT lnr_pay FROM termly_pay LIMIT 1")
+#         amt = cur.fetchone()
+#         tot = float(amt[0]) if amt else 0
+
+#         if tot < 1:
+#             cur.execute("SELECT selected_term FROM term WHERE is_active = 1")
+#             is_active = cur.fetchone()[0]
+#             messagebox.showwarning("Remedial App", f"Set Fee payable for {is_active}")
+#             return
+
+#         # Check for existing transaction records for the current term
+#         cur.execute("""SELECT amount_paid, balance FROM transactions
+#                         WHERE learner_id = %s AND term_id = (SELECT term_id FROM term WHERE is_active = 1)""",
+#                     (learner_id,))
+#         record = cur.fetchone()
+
+#         if record:
+#             new_amount = float(record[0]) + amount_paid
+#             new_balance = float(record[1]) - amount_paid
+#         else:
+#             new_amount = amount_paid
+#             new_balance = tot - amount_paid
+
+#         # Ensure the amount paid doesn't exceed the termly fee
+#         if new_amount > tot:
+#             messagebox.showwarning("Remedial App", "Amount Paid cannot exceed termly\npayable amount")
+#             return
+
+#         # Retrieve the current term ID
+#         cur.execute("SELECT term_id FROM term WHERE is_active = 1")
+#         active = cur.fetchone()[0]
+
+#         # Insert or update the transaction
+#         cur.execute("""INSERT INTO transactions(amount_paid, learner_id, term_id, balance)
+#                         VALUES (%s, %s, %s, %s)
+#                         ON DUPLICATE KEY UPDATE
+#                         amount_paid = VALUES(amount_paid),
+#                         balance = VALUES(balance)""", (new_amount, learner_id, active, new_balance))
+#         my_db.commit()
+
+#         # Record transaction history
+#         comment = (From_entry.get()).title()
+#         if len(comment) > 25:
+#             raise ValueError("Comment exceeds 25 characters")
+#         cur.execute("SELECT transaction_id FROM transactions ORDER BY transaction_id DESC LIMIT 1")
+#         item = cur.fetchone()
+#         transaction_id = item[0] if item else None
+
+#         cur.execute("""INSERT INTO transaction_history(learner_id, amount, balance, term_id, comment, transaction_id)
+#                     VALUES (%s, %s, %s, %s, %s, %s)""",
+#                     (learner_id, new_amount, new_balance, active, comment, transaction_id))
+#         my_db.commit()
+
+#         # Clean up old records if the balance is cleared
+#         cur.execute("""DELETE FROM transaction_history WHERE learner_id = (
+#                         SELECT learner_id FROM transactions WHERE balance = 0 AND learner_id = %s 
+#                         AND term_id = (SELECT term_id FROM term WHERE is_active = 1))""", (learner_id,))
+#         my_db.commit()
+
+#         # Clear input and notify success
+#         amount_entry.delete(0, END)
+#         disp_label.configure(text="Payment saved successfully")
+#         disp_label.after(4000, lambda: disp_label.configure(text=""))
+#         display_learners()
+#     except Exception as ex:
+#         messagebox.showerror("Remedial App", f"An error occurred: {ex}")
 
 def make_payment(e=None):
     try:
@@ -966,14 +1433,15 @@ def make_payment(e=None):
         current_term_number = term_no[0]
 
         # Determine the previous term ID (if applicable)
-        prev_term_id = None if current_term_number == 1 else cur.execute(
-            "SELECT term_id FROM term WHERE term_number = %s", (current_term_number - 1,)
-        ).fetchone()
-        prev_term_id = prev_term_id[0] if prev_term_id else None
+        prev_term_id = None
+        if current_term_number > 1:
+            cur.execute("SELECT term_id FROM term WHERE term_number = %s", (current_term_number - 1,))
+            prev_term_id = cur.fetchone()
+            prev_term_id = prev_term_id[0] if prev_term_id else None
 
         # Check if learner has outstanding balance from the previous term
         if prev_term_id:
-            cur.execute("SELECT amount_paid, balance FROM transactions WHERE learner_id = %s", (learner_id,))
+            cur.execute("SELECT amount_paid, balance FROM transactions WHERE learner_id = %s AND term_id = %s", (learner_id, prev_term_id))
             balance = cur.fetchone()
             prev_balance = balance[1] if balance else 0
             prev_amount_paid = balance[0] if balance else 0
@@ -1055,8 +1523,6 @@ def make_payment(e=None):
         display_learners()
     except Exception as ex:
         messagebox.showerror("Remedial App", f"An error occurred: {ex}")
-
-
 def disable_combo(e):
     global tr_title_combo,reg_grade_combo,person_type_combo
     if person_type_combo.get()=="Learner":
@@ -1068,7 +1534,7 @@ def disable_combo(e):
             reg_grade_combo.configure(state=DISABLED)
 
 
-def display_teachers():
+def display_teachers(e=None):
     global teacher_tree
     try:
         # Clear the tree before inserting new data
@@ -1200,7 +1666,8 @@ def delete_person(person):
         if not person:
             root.bell()
             # messagebox.showwarning("Register Persons","Select person type to proceed")
-            CTkMessagebox(title="Register Persons",message="Select person type to proceed",icon="warning")
+            # CTkMessagebox(title="Register Persons",message="Select person type to proceed",icon="warning")
+            messagebox.showwarning(title="Register Persons",message="Select person type to proceed")
             return
         #deleting learner
         if person=="Learner":
@@ -1224,6 +1691,7 @@ def delete_person(person):
                     display_learners()
                     reg_person_label.configure(text="Learner details deleted successfully")
                     reg_person_label.after(4000,lambda:reg_person_label.configure(text=""))
+                    number_entry.delete(0,END)
         else:
             person=="Teacher"
             #access learner before asking to delete
@@ -1244,9 +1712,10 @@ def delete_person(person):
                     my_db.commit()
                     reg_person_label.configure(text="Teacher details deleted successfully")
                     reg_person_label.after(4000,lambda:reg_person_label.configure(text=""))
+                    number_entry.delete(0,END)
     except Exception as ex:
-        # messagebox.showerror("Register Persons",f"{ex}")
-        CTkMessagebox(title="Register Persons",message=f"{ex}",icon="error")
+        messagebox.showerror("Register Persons",f"{ex}")
+    
 # 
 def add_person(person):
     try:
@@ -1258,7 +1727,7 @@ def add_person(person):
         try:
             id_number = int(id_number)
         except ValueError:
-            CTkMessagebox(title="Register Persons", message="ID number must be an integer.", icon="warning")
+            messagebox.showwarning(title="Register Persons", message="ID number must be an integer.")
             return
 
         grade = reg_grade_combo.get()
@@ -1351,9 +1820,9 @@ def add_person(person):
                     "Register Persons", "Ensure that you have filled all the necessary fields for person type: Teacher"
                 )
         else:
-            CTkMessagebox(title="Register Persons", message="Invalid person type selected.", icon="warning")
+            messagebox.showwarning(title="Register Persons", message="Invalid person type selected.")
     except Exception as ex:
-        CTkMessagebox(title="Register Persons", message=f"An error occurred: {ex}", icon="warning")
+        messagebox.showwarning(title="Register Persons", message=f"An error occurred: {ex}")
         
 #accessing grades
 def grades_list():
@@ -1427,7 +1896,7 @@ def call_pay_hist():
         pay_hist_tree.insert("", END, values=(index, record[0], record[1], f"{record[2]} {record[3]} {record[4]}",
                                               record[5], record[6], formatted_date, record[8]))
     # Check if records exist, else return
-def payment_history_func():
+def payment_history_func(e=None):
     global pay_hist_tree, search_hist_entry, search_hist_disp
 
     # Fetch transaction history from the database
@@ -1502,7 +1971,7 @@ def payment_history_func():
 
 
 #teacher display
-def teacher_win_func():
+def teacher_win_func(e=None):
     global teacher_tree,session_combo,grade_combo,subject_combo,pay_token_entry,tr_win_disp
     teacher_win=ctk.CTkToplevel(root)
     teacher_win.geometry("600x500+400+10")
@@ -1570,7 +2039,7 @@ def teacher_win_func():
     file_menu=Menu(attend_hist_menu)
     attend_hist_menu.add_cascade(menu=file_menu,label="Records")
     file_menu.add_command(label="History",command=tr_attendance_func)
-    file_menu.add_command(label="Archives", command=disp_attend_archive_func)
+    file_menu.add_command(label="Archives", command=lambda:disp_attend_archive_func(None))
     display_teachers()
 #setting term(term/year,termly pay teacher pay,promoting learnes)
 def set_term_func():
@@ -1781,22 +2250,22 @@ def set_default_term(e):
         else:
             # If no active term is found
             root.bell()
-            CTkMessagebox(title="Set Term", message="No active term found.", icon="warning")
+            messagebox.showwarning(title="Set Term", message="No active term found.")
             # week_one()
             # else:
         #     root.bell()
         #     CTkMessagebox(title="Set Term", message="Fill all fields to set term", icon="warning")
     except Exception as ex:
         # Catch any exceptions
-        CTkMessagebox(title="Set Term", message=f"An error occurred: {ex}", icon="warning")
+        messagebox.showwarning(title="Set Term", message=f"An error occurred: {ex}")
         my_db.rollback()
 
 
 #placer
-def placer(e):
-    cord=f"{e.x} x {e.y}"
-    disp_label.configure(text=cord)
-    disp_label.after(3000,lambda:disp_label.configure(text=""))
+# def placer(e):
+#     cord=f"{e.x} x {e.y}"
+#     disp_label.configure(text=cord)
+#     disp_label.after(3000,lambda:disp_label.configure(text=""))
     
 #switching between light and dark modes
 def toggle():
@@ -1876,18 +2345,20 @@ admin_menu=tb.Menu(menu)
 menu.add_cascade(menu=admin_menu,label="Admin")
 admin_menu.add_command(label="Set Term",command=set_term_func)
 admin_menu.add_separator()
+admin_menu.add_command(label="Set School Name",command=school_name_func)
+admin_menu.add_separator()
 file_menu=tb.Menu(menu)
 menu.add_cascade(menu=file_menu,label="Files")
-file_menu.add_command(label="Archived Learners")
+file_menu.add_command(label="Archived Learners",command=display_archives)
 gen_menu=tb.Menu(file_menu)
 file_menu.add_cascade(menu=gen_menu,label="Generate files")
-gen_menu.add_command(label="Remedial file-xlsx")
-gen_menu.add_command(label="Class Lists -xlsx")
+gen_menu.add_command(label="Remedial file-xlsx",command=generate_grade_reports,accelerator="ctrl+g")
+gen_menu.add_command(label="Teacher attendance -xlsx",command=generate_teacher_attendance_report)
 admin_menu.add_command(label="Register Persons",command=add_person_func)
-menu.add_command(label="Learner Payment History",command=payment_history_func)
+menu.add_command(label="Learner Payment History",command=lambda:payment_history_func(None),accelerator="ctrl+H")
 menu.add_separator()
 # menu.add_command(label=" Display Tr. Attnd. History") #on the monitor table
-menu.add_command(label="Monitor Tr. Attendance",command=teacher_win_func)
+menu.add_command(label="Monitor Tr. Attendance",command=lambda:teacher_win_func(None),accelerator="ctrl+A")
 # menu.add_separator()
 # menu.add_command(label="Attendance Archive", command=disp_attend_archive_func)
 
@@ -1899,7 +2370,7 @@ learner_menu=Menu(root,tearoff=0)
 learner_menu=Menu(learner_menu,tearoff=0)
 learner_menu.add_command(label="Delete Learner",command=delete_learner)
 learner_menu.add_separator()
-learner_menu.add_command(label="Display Teachers",command=teacher_win_func)
+learner_menu.add_command(label="Display Teachers",command=lambda:teacher_win_func(None))
 learner_menu.add_separator()
 learner_menu.add_command(label="Attendance History",command=tr_attendance_func)
 learner_menu.add_separator()
@@ -1965,7 +2436,34 @@ submit_button.grid(row=2,column=1)
 retrieve_week()
 display_learners()
 #bindings
-root.bind("<Button-1>",placer)
+# root.bind("<Button-1>",placer)
 root.bind("<Button-3>",binding)
-# week_combo.bind("<<ComboboxSelected>>",set_default_week)
+# fee_tree_scroll.bind("<MouseWheel>")
+#binding the update button
+root.bind("<Return>",make_payment)
+root.bind("<Control-t>",teacher_win_func)
+root.bind("<Control-T>",teacher_win_func)
+root.bind("<Control-h>",payment_history_func)
+root.bind("<Control-H>",payment_history_func)
+root.bind("<Control-a>",tr_attendance_func)
+root.bind("<Control-A>",tr_attendance_func)
+root.bind("<Control-G>",generate_records)
+root.bind("<Control-g>",generate_records)
+root.bind("<Control-C>",disp_attend_archive_func)
+root.bind("<Control-c>",disp_attend_archive_func)
+#saving learners and teachers records
+# root.bind("<Control-z>",add_learner)
+# root.bind("<Control-Z>",add_learner)
+# root.bind("<Control-x>",add_teachers)
+# root.bind("<Control-X>",add_teachers)
+# #closing app
+def confirm_close():
+    root.bell()
+    res=messagebox.askyesno("Remedial App","Are you sure you want to close\nRemedial App?")
+    if res:
+        root.destroy()
+      
+
+
+root.protocol("WM_DELETE_WINDOW",confirm_close)
 root.mainloop()
