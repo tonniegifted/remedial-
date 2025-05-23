@@ -52,7 +52,7 @@ screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
 # Set the window size
 window_width = 700
-window_height = 630
+window_height = 600
 # Calculate position to center horizontally and start at the top
 position_x = (screen_width - window_width) // 2
 position_y = 10  # Start at the to
@@ -93,7 +93,7 @@ def switchRootTerm(e=None):
     my_db.commit()
     # Refresh learners
     display_learners()
-    # week_one()
+    week_one()
 def setRootTerm():
     #selecting the active term
     cur.execute("""SELECT selected_term FROM term WHERE is_active=1""")
@@ -542,7 +542,7 @@ def disp_attend_archive_func(e=None):
     items = cur.fetchall()
     if items:
         tr_attend_archive_win = CTkToplevel(root)
-        tr_attend_archive_win.geometry("770x400+390+10")
+        tr_attend_archive_win.geometry("700x400+390+10")
         tr_attend_archive_win.title("Teacher Attendance History")
         # style
         tr_attend_archive_win.resizable(width=False,height=False)
@@ -563,13 +563,13 @@ def disp_attend_archive_func(e=None):
         tr_attend_archive_tree.column("#0", width=0, stretch=NO)
         tr_attend_archive_tree.column("s/no", width=45, anchor="center", minwidth=30)
         # tr_attend_archive_tree.column("ID", width=45, anchor="center", minwidth=30)
-        tr_attend_archive_tree.column("name", width=150, minwidth=150, anchor=W)
-        tr_attend_archive_tree.column("grade", width=80, minwidth=75, anchor=CENTER)
-        tr_attend_archive_tree.column("subject", width=60, minwidth=50, anchor=CENTER)
-        tr_attend_archive_tree.column("token", width=70, minwidth=50, anchor=CENTER)
-        tr_attend_archive_tree.column("session", width=100, minwidth=90, anchor=W)
-        tr_attend_archive_tree.column("week", width=90, minwidth=80, anchor=W)
-        tr_attend_archive_tree.column("date", width=120, minwidth=120, anchor=W)
+        tr_attend_archive_tree.column("name", width=250, minwidth=150, anchor=W)
+        tr_attend_archive_tree.column("grade", width=90, minwidth=75, anchor=W)
+        tr_attend_archive_tree.column("subject", width=90, minwidth=50, anchor=W)
+        tr_attend_archive_tree.column("token", width=90, minwidth=50, anchor=CENTER)
+        tr_attend_archive_tree.column("session", width=140, minwidth=90, anchor=W)
+        tr_attend_archive_tree.column("week", width=120, minwidth=80, anchor=W)
+        tr_attend_archive_tree.column("date", width=140, minwidth=120, anchor=W)
         # headings
         tr_attend_archive_tree.heading("#0", text="")
         tr_attend_archive_tree.heading("s/no", text="#", anchor=CENTER)
@@ -2285,7 +2285,7 @@ def teacher_win_func(e=None):
     pay_button = ctk.CTkButton(tr_win_w_frame, text="Save Changes", width=50,
                                command=pay_token)
     pay_button.grid(row=1, column=3, pady=10)
-    tr_win_disp=ctk.CTkLabel(teacher_win,text="",font=("helvetica",16))
+    tr_win_disp=ctk.CTkLabel(teacher_win,text="",font=("helvetica",12))
     tr_win_disp.place(x=250,y=450)
     #menu
     attend_hist_menu=tb.Menu(teacher_win)
@@ -2638,8 +2638,8 @@ menu.add_cascade(menu=file_menu,label="Files")
 file_menu.add_command(label="Archived Learners",command=display_archives)
 gen_menu=tb.Menu(file_menu)
 file_menu.add_cascade(menu=gen_menu,label="Generate files")
-gen_menu.add_command(label="Remedial file-xlsx",command=generate_grade_reports,accelerator="ctrl+G",font=("helvetica",14))
-gen_menu.add_command(label="Teacher attendance -xlsx",command=generate_teacher_attendance_report,font=("helvetica",14))
+gen_menu.add_command(label="Remedial file- Docx",command=generate_grade_reports,accelerator="ctrl+G",font=("helvetica",14))
+gen_menu.add_command(label="Teacher attendance -Docx",command=generate_teacher_attendance_report,font=("helvetica",14))
 admin_menu.add_command(label="Register Persons",command=add_person_func,font=("helvetica",14))
 menu.add_command(label="Learner Payment History",command=lambda:payment_history_func(None),accelerator="ctrl+H")
 menu.add_separator()
